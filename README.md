@@ -72,7 +72,18 @@ data/
 
 백테스트와 캘리브레이션은 실제값을 그대로 복사하지 않고, 첫 관측값에서 시작해 공통 response function과 과거 외생 변수로 recursive simulated path를 만든 뒤 실제 데이터와 비교합니다. 캘리브레이션 결과는 기본 loss, 보정 후 loss, 개선률, 선택된 파라미터 배율, GDP/물가/실업률별 적합도를 함께 표시합니다.
 
-현재 데이터 소스는 로컬 샘플 JSON입니다. FRED, ECOS, OECD adapter는 공식 데이터 연동을 위한 stub 상태이며, 아직 API 키 처리나 원격 호출을 수행하지 않습니다.
+현재 기본 데이터 소스는 로컬 샘플 JSON입니다. FRED adapter는 미국 시계열 일부를 live data로 불러올 수 있고, ECOS/OECD adapter는 공식 데이터 연동을 위한 stub 상태입니다.
+
+## 공식 데이터 API 연동
+
+데이터랩은 기본적으로 로컬 샘플 데이터를 사용하며, 선택적으로 공식 데이터 API를 실험용 보강 데이터로 불러올 수 있습니다.
+
+- FRED: 미국 거시경제 시계열 일부를 live data로 불러올 수 있습니다.
+- ECOS: 한국은행 경제통계 연동을 위한 adapter 구조만 준비되어 있습니다.
+- OECD: 국가 비교용 SDMX 연동을 위한 adapter 구조만 준비되어 있습니다.
+- API 키: FRED와 ECOS 키는 브라우저 `localStorage`에만 저장되며 GitHub 저장소에는 포함하지 않습니다.
+- Fallback: API key 누락, 네트워크 오류, CORS 오류, 데이터 누락이 발생하면 `data/sample_korea_macro.json` 또는 `data/sample_us_macro.json`으로 자동 전환합니다.
+- 공개 배포: 실제 서비스 환경에서는 브라우저 직접 호출보다 backend proxy 사용을 권장합니다.
 
 ## 한계
 

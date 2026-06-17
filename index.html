@@ -554,12 +554,45 @@
           <details class="section">
             <summary>데이터 보정·검증</summary>
             <label>
-              샘플 데이터
+              국가
               <select id="calibrationCountrySelect">
                 <option value="korea">한국 샘플</option>
                 <option value="us">미국 샘플</option>
               </select>
             </label>
+            <label>
+              데이터 소스
+              <select id="dataSourceSelect">
+                <option value="local">로컬 샘플</option>
+                <option value="fred">FRED live data</option>
+                <option value="ecos">ECOS stub</option>
+                <option value="oecd">OECD stub</option>
+              </select>
+            </label>
+            <div class="model-inputs" style="margin-top: 8px;">
+              <label class="model-input">
+                시작 연월
+                <input id="dataStartDateInput" type="month" value="2015-01">
+              </label>
+              <label class="model-input">
+                종료 연월
+                <input id="dataEndDateInput" type="month" value="2024-12">
+              </label>
+            </div>
+            <label>
+              FRED API Key
+              <input id="fredApiKeyInput" type="password" placeholder="브라우저 localStorage에만 저장">
+            </label>
+            <label>
+              ECOS API Key
+              <input id="ecosApiKeyInput" type="password" placeholder="향후 ECOS 연동용">
+            </label>
+            <div class="button-grid" style="margin-top: 8px;">
+              <button id="saveApiKeyBtn" class="btn secondary" type="button">API 키 저장</button>
+              <button id="clearApiKeyBtn" class="btn secondary" type="button">API 키 삭제</button>
+              <button id="loadLiveDataBtn" class="btn secondary" type="button">공식 데이터 불러오기</button>
+            </div>
+            <div id="dataSourceStatusValue" class="selected-agent subtle">기본값은 로컬 샘플 데이터입니다. API 실패 시 자동으로 샘플 데이터로 전환됩니다.</div>
             <div class="button-grid" style="margin-top: 8px;">
               <button id="calibrationBtn" class="btn secondary" type="button">데이터 보정 실행</button>
               <button id="backtestBtn" class="btn secondary" type="button">과거 구간 검증</button>

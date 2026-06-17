@@ -233,6 +233,8 @@
     }
 
     input[type="number"],
+    input[type="month"],
+    input[type="password"],
     select {
       width: 100%;
       border: 1px solid rgba(22, 48, 46, 0.18);

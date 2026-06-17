@@ -71,9 +71,12 @@ import {
 import { scenarioSelectGroups } from "./scenarios/presets.js";
 import { hydrateScenarioSelect } from "./ui/controls.js";
 import {
+  clearDataApiKeys as clearDataApiKeysPanel,
+  runLiveDataLoadMode as runLiveDataLoadModePanel,
   runBacktestMode as runBacktestModePanel,
   runDataCalibrationMode as runDataCalibrationModePanel,
   runMonteCarloMode as runMonteCarloModePanel,
+  saveDataApiKeys as saveDataApiKeysPanel,
   updateModelReliabilityPanel as updateModelReliabilityPanelView
 } from "./ui/dataLab.js";
 
@@ -218,6 +221,8 @@ import {
       cacheElementIds([
         "balanceQuickTestBtn", "scenarioValidationBtn", "policyComparisonHorizon", "policyComparisonBtn",
         "policyComparisonSummaryValue", "policyComparisonResult", "calibrationCountrySelect",
+        "dataSourceSelect", "dataStartDateInput", "dataEndDateInput", "fredApiKeyInput",
+        "ecosApiKeyInput", "saveApiKeyBtn", "clearApiKeyBtn", "loadLiveDataBtn", "dataSourceStatusValue",
         "calibrationBtn", "backtestBtn", "monteCarloBtn", "accountingValidationValue",
         "modelConfidenceValue", "dataLabResult", "balanceTestResult", "scenarioValidationResult",
         "developerValidationBtn", "developerValidationResult", "debugErrorLog", "eventLog"
@@ -380,6 +385,9 @@ import {
       safeOn(els.balanceQuickTestBtn, "click", runBalanceQuickTest, "balanceQuickTestBtn");
       safeOn(els.scenarioValidationBtn, "click", runScenarioValidation, "scenarioValidationBtn");
       safeOn(els.policyComparisonBtn, "click", runPolicyComparison, "policyComparisonBtn");
+      safeOn(els.saveApiKeyBtn, "click", saveDataApiKeys, "saveApiKeyBtn");
+      safeOn(els.clearApiKeyBtn, "click", clearDataApiKeys, "clearApiKeyBtn");
+      safeOn(els.loadLiveDataBtn, "click", runLiveDataLoadMode, "loadLiveDataBtn");
       safeOn(els.calibrationBtn, "click", runDataCalibrationMode, "calibrationBtn");
       safeOn(els.backtestBtn, "click", runBacktestMode, "backtestBtn");
       safeOn(els.monteCarloBtn, "click", runMonteCarloMode, "monteCarloBtn");
@@ -9964,6 +9972,18 @@ import {
 
     async function runDataCalibrationMode() {
       return runDataCalibrationModePanel(createDataLabContext());
+    }
+
+    async function runLiveDataLoadMode() {
+      return runLiveDataLoadModePanel(createDataLabContext());
+    }
+
+    function saveDataApiKeys() {
+      return saveDataApiKeysPanel(createDataLabContext());
+    }
+
+    function clearDataApiKeys() {
+      return clearDataApiKeysPanel(createDataLabContext());
     }
 
     async function runBacktestMode() {
