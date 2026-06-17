@@ -10,12 +10,15 @@
 
 ![Agent Macro Lab screenshot](./docs/screenshot-placeholder.svg)
 
+현재 이미지는 임시 placeholder입니다. 실제 실행 화면 캡처는 `docs/screenshot.png`로 교체할 예정입니다.
+
 ## 실행 방법
 
 ES modules를 사용하므로 로컬 정적 서버에서 실행하는 것을 권장합니다.
 
 ```powershell
-cd "C:\Users\HOME\OneDrive\바탕 화면\economic"
+git clone <repository-url>
+cd economic
 python -m http.server 8788
 ```
 
@@ -42,12 +45,22 @@ http://127.0.0.1:8788/index.html
 index.html
 styles/main.css
 src/
-  main.js                  # 앱 초기화와 기존 시뮬레이션 엔진
-  core/                    # 안전 유틸, 회계, 보정, 백테스트, 몬테카를로
-  economy/                 # 반응식과 경제 계산 모듈화 시작점
+  main.js                  # 앱 조립, 이벤트 연결, 남은 시뮬레이션 엔진
+  core/
+    config.js              # 공통 상수와 정책 전달 메타데이터
+    stateFactory.js        # 초기 앱 상태 생성
+    mathUtils.js           # 안전 수치, clamp, 평균, Gini 등 공통 유틸
+    calibration.js         # 샘플 데이터 기반 파라미터 보정
+    backtest.js            # recursive simulated path 기반 과거 구간 검증
+  economy/
+    sectorProfiles.js      # 산업별 민감도와 전략 helper
+    accountingAdapter.js   # SFC 보조 회계 레이어 연결
+    responseFunctions.js   # 단순화된 거시 반응식
   data/                    # 로컬 데이터 adapter와 변환 함수
   scenarios/               # 시나리오 선택 데이터
-  ui/                      # UI helper
+  ui/
+    controls.js            # 시나리오 select hydration
+    dataLab.js             # 데이터 보정, 백테스트, 몬테카를로 UI
 data/
   sample_korea_macro.json
   sample_us_macro.json

@@ -94,64 +94,142 @@ import {
     });
 
     function cacheElements() {
-      [
-        "runPulse", "runState", "tickDisplay", "startBtn", "pauseBtn", "resetBtn", "stepBtn", "shockBtn",
-        "speedSlider", "performanceModeSelect", "consumerSlider", "producerSlider", "interestSlider", "taxSlider", "corporateTaxSlider", "vatSlider", "spendingSlider",
-        "wageSlider", "inflationSlider", "scenarioSelect", "applyScenarioBtn", "historicalScenarioBtn", "autoPolicyToggle", "randomPolicyEventsToggle",
-        "gameModeSelect", "startGameModeBtn", "modeStatusValue",
-        "speedValue", "consumerValue", "producerValue", "interestValue", "taxValue", "corporateTaxValue", "vatValue", "spendingValue",
-        "wageValue", "inflationSensitivityValue", "gdpValue", "outputValue", "consumptionValue",
-        "investmentValue", "unemploymentValue", "employmentValue", "priceValue", "inflationValue",
-        "rateValue", "balanceValue", "debtValue", "householdCashValue", "confidenceValue",
-        "firmCashValue", "inventoryValue", "shockBadge", "simCanvas", "taxCollectedValue", "householdIncomeTaxValue", "corporateTaxCollectedValue", "vatRevenueValue", "taxCompositionValue", "taxSentimentValue",
-        "spendingActualValue", "governmentDebtServiceValue", "debtToGdpValue", "fiscalSpaceValue", "wagesValue", "unitsSoldValue", "unitsProducedValue", "giniValue",
-        "selectedAgent", "eventLog", "canvasTooltip", "consumptionDeltaValue", "investmentDeltaValue",
-        "unemploymentDeltaValue", "priceDeltaValue", "householdDebtValue", "firmDebtValue",
-        "debtBurdenValue", "firmDscrValue", "macroNarrative", "transmissionMapValue", "policyRecommendationValue", "calendarValue", "phaseValue", "scoreValue",
-        "incomeInequalityValue", "wealthInequalityValue", "lowIncomeConsumptionCapacityValue", "middleClassHousingBurdenValue", "wealthyAssetEffectValue", "socialStressIndexValue",
-        "mainPressureClassValue", "lowIncomeStressValue", "middleMortgageStressValue", "wealthyAssetStressValue",
-        "hiddenVulnerabilityValue", "dominantVulnerabilityValue", "householdVulnerabilityValue", "firmVulnerabilityValue", "bankVulnerabilityValue", "housingVulnerabilityValue", "externalVulnerabilityValue",
-        "marketSuccessValue", "marketFailureValue", "allocationQualityValue", "marketFailureTypeValue", "marketSuccessTypeValue", "historicalScenarioStatusValue", "earlyWarningSummaryValue", "earlyWarningDetailValue", "causalDecompositionValue",
-        "manufacturingStressValue", "servicesDemandValue", "agricultureStressValue", "energySectorStressValue", "constructionStressValue", "financialSectorStressValue", "technologyValuationPressureValue", "mostStressedSectorValue", "sectorCountSummaryValue", "sectorProfitInvestmentValue", "buybackShareValue", "investmentConversionValue", "cashDebtAllocationValue",
-        "exchangeRateIndexValue", "importPriceIndexValue", "commodityPriceIndexValue", "energyPriceIndexValue", "tradeBalanceValue", "foreignConsumerDemandValue", "foreignInvestorSentimentValue", "foreignBondDemandValue", "foreignSupplierPressureValue", "foreignCapitalFlowValue",
-        "centralBankCredibilityValue", "expectedRatePathValue", "forwardGuidanceClarityValue", "inflationTargetCredibilityValue",
-        "policyRateDetailValue", "shortTermRateValue", "treasuryBill3MValue", "bondYield2YValue", "bondYield5YValue", "bondYield10YValue", "bondYield30YValue", "loanRateDetailValue",
-        "mortgageRateDetailValue", "corporateLoanRateValue", "depositRateDetailValue", "realPolicyRateValue", "termSpreadValue", "longBondPriceIndexValue", "bondMarketStressValue", "rateUncertaintyValue",
-        "averageCreditRatingValue", "distressedFirmRatioValue", "zombieFirmRatioValue", "averageDefaultRiskValue",
-        "stockIndexValue", "housingIndexValue", "stockReturnValue", "stockVolatilityValue", "stockValuationPressureValue", "stockMispricingValue", "housingMispricingValue", "speculativeDemandValue", "stockRiskSentimentValue", "housingReturnValue", "wealthEffectValue",
-        "commercialIndexValue", "landIndexValue", "rentIndexValue", "commercialVacancyValue", "collateralValueIndexValue", "realEstateStressValue",
-        "averageFirmStockPriceValue", "firmStockRangeValue", "firmStockVolatilityValue", "opaqueFirmRatioValue", "stockCrashFirmCountValue",
-        "housingAffordabilityValue", "mortgageBurdenValue", "negativeEquityRatioValue", "assetBubbleRiskValue", "financialConditionIndexValue",
-        "bondYieldValue", "bondPriceIndexValue", "creditSpreadValue", "bankHealthValue", "bankLendingStandardValue",
-        "creditSupplyValue", "depositorConfidenceValue", "interbankTrustValue", "bankFundingPressureValue", "creditOfficerCautionValue", "loanDemandIndexValue", "creditCyclePhaseValue", "depositRateValue", "loanRateValue", "nplRatioValue", "goldIndexValue", "silverIndexValue",
-        "safeHavenDemandValue", "bankingCrisisRiskValue",
-        "sentConsumerConfidenceValue", "sentBusinessConfidenceValue", "sentBankRiskAppetiteValue", "sentMarketRiskValue",
-        "sentInflationExpectationValue", "sentRecessionFearValue", "sentFiscalCredibilityValue", "sentimentNarrativeValue",
-        "classAnalysisPanelValue",
-        "stockFearIndexValue", "fearGreedValue", "rumorIntensityValue", "informationUncertaintyValue", "safeHavenPsychologyValue",
-        "stockExpectationValue", "stockVolatilityIndexValue", "householdInfoAccuracyValue", "firmDemandPerceptionValue",
-        "bankRiskPerceptionValue", "marketOverreactionValue", "policyClarityValue", "misperceptionIndexValue", "informationNarrativeValue",
-        "realEstateBeliefValue", "stockBeliefValue", "herdIntensityValue", "fomoIntensityValue", "lossAversionValue", "confirmationBiasValue",
-        "panicSellingValue", "behaviorMispricingValue", "behaviorNarrativeValue",
-        "bestScoreValue", "feedbackBanners", "missionSummary", "objectiveList", "policyEventCard",
-        "policyEventTitle", "policyEventDescription", "policyEventOptions", "toastStack",
-        "diagBalanceSummaryValue",
-        "diagAvgUnemploymentValue", "diagAvgInflationValue", "diagAvgGdpValue", "diagPotentialOutputValue",
-        "diagOutputGapValue", "diagCapacityUtilizationValue", "diagUnemploymentGapValue", "diagInflationGapValue",
-        "diagPolicyGapValue", "diagAvgFirmEmploymentValue",
-        "diagHiringFreezeRatioValue", "diagFirmStressRatioValue", "diagInventoryDemandRatioValue",
-        "diagInterestPolicyValue", "diagTaxPolicyValue", "diagCorporateTaxPolicyValue", "diagSpendingPolicyValue",
-        "diagDebtToGdpValue", "diagGovernmentDebtServiceValue", "diagFiscalSpaceValue",
-        "diagHouseholdDebtBurdenValue", "diagFirmDscrValue", "diagHouseholdDebtStressRatioValue", "diagFirmDebtStressRatioValue", "diagWarningsValue",
-        "diagAssetBubbleRiskValue", "diagHousingAffordabilityValue", "diagWealthEffectValue",
-        "diagFinancialMarketSummaryValue", "diagBondYieldValue", "diagCreditSpreadValue", "diagBankingCrisisRiskValue",
-        "balanceQuickTestBtn", "scenarioValidationBtn", "policyComparisonBtn", "policyComparisonHorizon", "policyComparisonSummaryValue", "policyComparisonResult", "calibrationCountrySelect", "calibrationBtn", "backtestBtn", "monteCarloBtn", "accountingValidationValue", "modelConfidenceValue", "dataLabResult", "balanceTestResult", "scenarioValidationResult", "developerValidationBtn", "developerValidationResult", "debugErrorLog",
-        "modelSelector", "useCurrentEconomyBtn", "runModelBtn", "modelInputs", "modelResultSummary",
-        "modelInterpretation", "modelComparisonList", "modelChart", "assetChart", "firmStockChart", "financialChart", "safeAssetChart", "sentimentChart",
-        "endOverlay", "endTitle", "endReason", "endSummaryGrid", "endRestartBtn", "endSandboxBtn"
-      ].forEach((id) => {
+      cacheControlElements();
+      cacheKpiElements();
+      cacheChartElements();
+      cacheInspectorElements();
+      cacheDataLabElements();
+      cacheModelLabElements();
+      cacheOverlayElements();
+    }
+
+    function cacheElementIds(ids) {
+      ids.forEach((id) => {
         els[id] = document.getElementById(id);
       });
+    }
+
+    function cacheControlElements() {
+      cacheElementIds([
+        "runPulse", "runState", "tickDisplay", "startBtn", "pauseBtn", "resetBtn", "stepBtn", "shockBtn",
+        "modeStatusValue", "gameModeSelect", "startGameModeBtn", "speedValue", "speedSlider",
+        "performanceModeSelect", "consumerValue", "consumerSlider", "producerValue", "producerSlider",
+        "interestValue", "interestSlider", "taxValue", "taxSlider", "corporateTaxValue",
+        "corporateTaxSlider", "vatValue", "vatSlider", "spendingValue", "spendingSlider",
+        "wageValue", "wageSlider", "inflationSensitivityValue", "inflationSlider", "scenarioSelect",
+        "applyScenarioBtn", "historicalScenarioBtn", "autoPolicyToggle", "randomPolicyEventsToggle"
+      ]);
+    }
+
+    function cacheKpiElements() {
+      cacheElementIds([
+        "calendarValue", "phaseValue", "scoreValue", "bestScoreValue", "feedbackBanners",
+        "gdpValue", "outputValue", "consumptionValue", "investmentValue", "unemploymentValue",
+        "employmentValue", "priceValue", "inflationValue", "rateValue", "balanceValue",
+        "debtValue", "householdCashValue", "confidenceValue", "firmCashValue", "inventoryValue",
+        "shockBadge", "consumptionDeltaValue", "investmentDeltaValue", "unemploymentDeltaValue",
+        "priceDeltaValue"
+      ]);
+    }
+
+    function cacheChartElements() {
+      cacheElementIds([
+        "simCanvas", "canvasTooltip", "gdpChart", "priceChart", "unemploymentChart", "demandChart",
+        "governmentChart", "assetChart", "firmStockChart", "financialChart", "safeAssetChart",
+        "sentimentChart", "modelChart"
+      ]);
+    }
+
+    function cacheInspectorElements() {
+      cacheElementIds([
+        "macroNarrative", "transmissionMapValue", "policyRecommendationValue", "earlyWarningSummaryValue",
+        "causalDecompositionValue", "missionSummary", "objectiveList", "policyEventCard",
+        "policyEventTitle", "policyEventDescription", "policyEventOptions", "selectedAgent",
+        "sentConsumerConfidenceValue", "sentBusinessConfidenceValue", "sentBankRiskAppetiteValue",
+        "sentMarketRiskValue", "sentInflationExpectationValue", "sentRecessionFearValue",
+        "sentFiscalCredibilityValue", "sentimentNarrativeValue", "classAnalysisPanelValue",
+        "stockFearIndexValue", "fearGreedValue", "rumorIntensityValue", "informationUncertaintyValue",
+        "safeHavenPsychologyValue", "stockExpectationValue", "stockVolatilityIndexValue",
+        "householdInfoAccuracyValue", "firmDemandPerceptionValue", "bankRiskPerceptionValue",
+        "marketOverreactionValue", "policyClarityValue", "misperceptionIndexValue",
+        "informationNarrativeValue", "realEstateBeliefValue", "stockBeliefValue", "herdIntensityValue",
+        "fomoIntensityValue", "lossAversionValue", "confirmationBiasValue", "panicSellingValue",
+        "behaviorMispricingValue", "behaviorNarrativeValue", "diagBalanceSummaryValue",
+        "diagAvgUnemploymentValue", "diagAvgInflationValue", "diagAvgGdpValue", "diagPotentialOutputValue",
+        "diagOutputGapValue", "diagCapacityUtilizationValue", "diagUnemploymentGapValue",
+        "diagInflationGapValue", "diagPolicyGapValue", "diagAvgFirmEmploymentValue",
+        "diagHiringFreezeRatioValue", "diagFirmStressRatioValue", "diagInventoryDemandRatioValue",
+        "diagInterestPolicyValue", "diagTaxPolicyValue", "diagCorporateTaxPolicyValue",
+        "diagSpendingPolicyValue", "diagDebtToGdpValue", "diagGovernmentDebtServiceValue",
+        "diagFiscalSpaceValue", "diagHouseholdDebtBurdenValue", "diagFirmDscrValue",
+        "diagHouseholdDebtStressRatioValue", "diagFirmDebtStressRatioValue", "diagAssetBubbleRiskValue",
+        "diagHousingAffordabilityValue", "diagWealthEffectValue", "diagFinancialMarketSummaryValue",
+        "diagBondYieldValue", "diagCreditSpreadValue", "diagBankingCrisisRiskValue", "diagWarningsValue",
+        "taxCollectedValue", "householdIncomeTaxValue", "corporateTaxCollectedValue", "vatRevenueValue",
+        "taxCompositionValue", "taxSentimentValue", "spendingActualValue", "governmentDebtServiceValue",
+        "debtToGdpValue", "fiscalSpaceValue", "wagesValue", "unitsSoldValue", "unitsProducedValue",
+        "giniValue", "householdDebtValue", "debtBurdenValue", "mortgageBurdenValue",
+        "negativeEquityRatioValue", "incomeInequalityValue", "wealthInequalityValue",
+        "lowIncomeConsumptionCapacityValue", "middleClassHousingBurdenValue", "wealthyAssetEffectValue",
+        "socialStressIndexValue", "mainPressureClassValue", "lowIncomeStressValue",
+        "middleMortgageStressValue", "wealthyAssetStressValue", "hiddenVulnerabilityValue",
+        "dominantVulnerabilityValue", "householdVulnerabilityValue", "firmVulnerabilityValue",
+        "bankVulnerabilityValue", "housingVulnerabilityValue", "externalVulnerabilityValue",
+        "marketSuccessValue", "marketFailureValue", "allocationQualityValue", "marketFailureTypeValue",
+        "marketSuccessTypeValue", "historicalScenarioStatusValue", "earlyWarningDetailValue",
+        "firmDebtValue", "firmDscrValue", "buybackShareValue", "investmentConversionValue",
+        "cashDebtAllocationValue", "manufacturingStressValue", "servicesDemandValue",
+        "agricultureStressValue", "energySectorStressValue", "constructionStressValue",
+        "financialSectorStressValue", "technologyValuationPressureValue", "mostStressedSectorValue",
+        "sectorCountSummaryValue", "sectorProfitInvestmentValue", "exchangeRateIndexValue",
+        "importPriceIndexValue", "commodityPriceIndexValue", "energyPriceIndexValue",
+        "tradeBalanceValue", "foreignConsumerDemandValue", "foreignInvestorSentimentValue",
+        "foreignBondDemandValue", "foreignSupplierPressureValue", "foreignCapitalFlowValue",
+        "centralBankCredibilityValue", "expectedRatePathValue", "forwardGuidanceClarityValue",
+        "inflationTargetCredibilityValue", "policyRateDetailValue", "shortTermRateValue",
+        "treasuryBill3MValue", "bondYield2YValue", "bondYield5YValue", "bondYield10YValue",
+        "bondYield30YValue", "loanRateDetailValue", "mortgageRateDetailValue",
+        "corporateLoanRateValue", "depositRateDetailValue", "realPolicyRateValue",
+        "termSpreadValue", "longBondPriceIndexValue", "bondMarketStressValue", "rateUncertaintyValue",
+        "averageCreditRatingValue", "distressedFirmRatioValue", "zombieFirmRatioValue",
+        "averageDefaultRiskValue", "stockIndexValue", "housingIndexValue", "commercialIndexValue",
+        "stockReturnValue", "stockVolatilityValue", "stockValuationPressureValue", "stockMispricingValue",
+        "housingMispricingValue", "speculativeDemandValue", "stockRiskSentimentValue",
+        "housingReturnValue", "wealthEffectValue", "housingAffordabilityValue", "assetBubbleRiskValue",
+        "landIndexValue", "rentIndexValue", "commercialVacancyValue", "collateralValueIndexValue",
+        "realEstateStressValue", "averageFirmStockPriceValue", "firmStockRangeValue",
+        "firmStockVolatilityValue", "opaqueFirmRatioValue", "stockCrashFirmCountValue",
+        "financialConditionIndexValue", "bondYieldValue", "bondPriceIndexValue", "creditSpreadValue",
+        "bankHealthValue", "bankLendingStandardValue", "creditSupplyValue", "depositorConfidenceValue",
+        "interbankTrustValue", "bankFundingPressureValue", "creditOfficerCautionValue",
+        "loanDemandIndexValue", "creditCyclePhaseValue", "depositRateValue", "loanRateValue",
+        "nplRatioValue", "goldIndexValue", "silverIndexValue", "safeHavenDemandValue",
+        "bankingCrisisRiskValue"
+      ]);
+    }
+
+    function cacheDataLabElements() {
+      cacheElementIds([
+        "balanceQuickTestBtn", "scenarioValidationBtn", "policyComparisonHorizon", "policyComparisonBtn",
+        "policyComparisonSummaryValue", "policyComparisonResult", "calibrationCountrySelect",
+        "calibrationBtn", "backtestBtn", "monteCarloBtn", "accountingValidationValue",
+        "modelConfidenceValue", "dataLabResult", "balanceTestResult", "scenarioValidationResult",
+        "developerValidationBtn", "developerValidationResult", "debugErrorLog", "eventLog"
+      ]);
+    }
+
+    function cacheModelLabElements() {
+      cacheElementIds([
+        "modelSelector", "useCurrentEconomyBtn", "runModelBtn", "modelInputs", "modelResultSummary",
+        "modelInterpretation", "modelComparisonList"
+      ]);
+    }
+
+    function cacheOverlayElements() {
+      cacheElementIds([
+        "toastStack", "endOverlay", "endTitle", "endReason", "endSummaryGrid", "endRestartBtn",
+        "endSandboxBtn"
+      ]);
     }
 
     function setupEvents() {

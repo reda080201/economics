@@ -24,6 +24,8 @@ export async function runDataCalibrationMode(context) {
       데이터: ${helpers.escapeHtml(state.modelReliability.lastDataset)}<br>
       손실값: ${helpers.round(result.loss, 3).toFixed(3)} / 후보 ${result.candidatesTested}개<br>
       신뢰도: ${helpers.escapeHtml(state.modelReliability.level)}<br>
+      대상 지표: ${helpers.escapeHtml((result.targetSeries || []).join(", "))}<br>
+      방식: ${helpers.escapeHtml(result.method || "recursive_model_path_search")}<br>
       이 보정은 샘플 데이터 기반의 교육용 계수 조정입니다.
     `);
     updateModelReliabilityPanel(context);
