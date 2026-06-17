@@ -1,13 +1,29 @@
 import { evaluateDirectionalValidation, renderValidationReport } from "./core/validation.js";
-import { createSectorState, syncSectorStateFromSimulation } from "./core/sectorState.js";
-import { closeAccountingPeriod, createFlowLedger, recordEconomicFlow } from "./core/flowLedger.js";
+import { createSectorState } from "./core/sectorState.js";
+import { createFlowLedger } from "./core/flowLedger.js";
 import { cloneModelParameters, defaultModelParameters } from "./core/modelParameters.js";
+import {
+  captureCoreStateSignature as captureCoreStateSignatureRuntime,
+  captureSimulationSnapshot as captureSimulationSnapshotRuntime,
+  compareCoreStateSignature as compareCoreStateSignatureRuntime,
+  restoreSimulationSnapshot as restoreSimulationSnapshotRuntime
+} from "./core/simulationRuntime.js";
 import { calibrateParameters } from "./core/calibration.js";
 import { runBacktest } from "./core/backtest.js";
 import { runMonteCarloScenario } from "./core/monteCarlo.js";
 import { loadCalibrationDataset } from "./data/calibrationDataset.js";
+import {
+  recordLedgerFlowFromUiFlow,
+  updateSfcAccountingLayer as updateSfcAccountingLayerAdapter
+} from "./economy/accountingAdapter.js";
 import { scenarioSelectGroups } from "./scenarios/presets.js";
 import { hydrateScenarioSelect } from "./ui/controls.js";
+import {
+  runBacktestMode as runBacktestModePanel,
+  runDataCalibrationMode as runDataCalibrationModePanel,
+  runMonteCarloMode as runMonteCarloModePanel,
+  updateModelReliabilityPanel as updateModelReliabilityPanelView
+} from "./ui/dataLab.js";
 
 "use strict";
 
@@ -2099,17 +2115,7 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
     }
 
     function updateSfcAccountingLayer() {
-      if (!state.sectorState) state.sectorState = createSectorState();
-      if (!state.flowLedger) state.flowLedger = createFlowLedger();
-      syncSectorStateFromSimulation(state.sectorState, state);
-      const validation = closeAccountingPeriod(state.flowLedger, state);
-      state.metrics.accountingStatus = validation.status;
-      state.metrics.accountingSummary = validation.summary;
-      if (state.modelReliability) {
-        state.metrics.calibrationLoss = state.modelReliability.calibrationLoss;
-        state.metrics.backtestDirectionHitRate = state.modelReliability.backtestDirectionHitRate;
-        state.metrics.modelReliabilityLevel = state.modelReliability.level;
-      }
+      return updateSfcAccountingLayerAdapter(state);
     }
 
     function isLargeEconomyMode() {
@@ -9983,106 +9989,45 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
       state.sentiment.businessConfidence = clamp(safeNumber(state.sentiment.businessConfidence, 0.7) - 0.04, 0, 1);
     }
 
-    async function loadSelectedCalibrationDataset() {
-      const country = els.calibrationCountrySelect?.value || "korea";
-      const dataset = await loadCalibrationDataset(country);
-      state.calibrationDataset = dataset;
-      return dataset;
-    }
-
     async function runDataCalibrationMode() {
-      if (!els.dataLabResult) return;
-      try {
-        els.dataLabResult.classList.add("visible");
-        setHtmlIfChanged(els.dataLabResult, "<strong>데이터 보정</strong><br>로컬 샘플 데이터를 불러오는 중...");
-        const dataset = await loadSelectedCalibrationDataset();
-        const result = calibrateParameters({
-          historicalData: dataset,
-          initialParameters: state.modelParameters || defaultModelParameters
-        });
-        state.modelParameters = result.parameters;
-        state.modelReliability = {
-          ...(state.modelReliability || createInitialModelReliability()),
-          level: result.loss < 0.8 ? "높음" : result.loss < 1.8 ? "중간" : "낮음",
-          calibrationLoss: result.loss,
-          bestVariable: "물가·금리 방향성",
-          weakestVariable: "실업률 급변 구간",
-          lastDataset: dataset.label || dataset.country || "샘플"
-        };
-        updateSfcAccountingLayer();
-        setHtmlIfChanged(els.dataLabResult, `
-          <strong>데이터 보정 완료</strong><br>
-          데이터: ${escapeHtml(state.modelReliability.lastDataset)}<br>
-          손실값: ${round(result.loss, 3).toFixed(3)} / 후보 ${result.candidatesTested}개<br>
-          신뢰도: ${escapeHtml(state.modelReliability.level)}<br>
-          이 보정은 샘플 데이터 기반의 교육용 계수 조정입니다.
-        `);
-        updateModelReliabilityPanel();
-      } catch (error) {
-        recordRuntimeError(error, "데이터 보정 오류", "데이터 보정 실행 중 오류가 감지되었습니다.");
-        setHtmlIfChanged(els.dataLabResult, `<strong>데이터 보정 오류</strong><br>${escapeHtml(error?.message || String(error))}`);
-      }
+      return runDataCalibrationModePanel(createDataLabContext());
     }
 
     async function runBacktestMode() {
-      if (!els.dataLabResult) return;
-      try {
-        const dataset = state.calibrationDataset || await loadSelectedCalibrationDataset();
-        const result = runBacktest(dataset);
-        const directionHit = (result.gdpDirectionHitRate + result.inflationDirectionHitRate + result.unemploymentDirectionHitRate) / 3;
-        state.modelReliability = {
-          ...(state.modelReliability || createInitialModelReliability()),
-          backtestDirectionHitRate: directionHit,
-          recentError: result.averageRmse,
-          level: directionHit > 0.68 ? "높음" : directionHit > 0.55 ? "중간" : "낮음",
-          lastDataset: dataset.label || dataset.country || "샘플"
-        };
-        updateSfcAccountingLayer();
-        els.dataLabResult.classList.add("visible");
-        setHtmlIfChanged(els.dataLabResult, `
-          <strong>과거 구간 검증</strong><br>
-          GDP 방향 적중률: ${percent(result.gdpDirectionHitRate * 100, 0)}<br>
-          물가 방향 적중률: ${percent(result.inflationDirectionHitRate * 100, 0)}<br>
-          실업률 방향 적중률: ${percent(result.unemploymentDirectionHitRate * 100, 0)}<br>
-          평균 RMSE: ${round(result.averageRmse, 3).toFixed(3)}<br>
-          가장 큰 오차 구간: ${escapeHtml(result.largestErrorWindow)}
-        `);
-        updateModelReliabilityPanel();
-      } catch (error) {
-        recordRuntimeError(error, "백테스트 오류", "과거 구간 검증 중 오류가 감지되었습니다.");
-        setHtmlIfChanged(els.dataLabResult, `<strong>백테스트 오류</strong><br>${escapeHtml(error?.message || String(error))}`);
-      }
+      return runBacktestModePanel(createDataLabContext());
     }
 
     function runMonteCarloMode() {
-      if (!els.dataLabResult) return;
-      try {
-        const result = runMonteCarloScenario(state.metrics || {}, isLargeEconomyMode() ? 30 : 60);
-        state.metrics.monteCarloRecessionProbability = result.recessionProbability;
-        els.dataLabResult.classList.add("visible");
-        setHtmlIfChanged(els.dataLabResult, `
-          <strong>불확실성 분석</strong><br>
-          실행 횟수: ${result.runs}회<br>
-          GDP 중앙값: ${macroMoney(result.gdpMedian)} / 하위 10%: ${macroMoney(result.gdpP10)} / 상위 10%: ${macroMoney(result.gdpP90)}<br>
-          실업률 중앙값: ${percent(result.unemploymentMedian, 1)}<br>
-          침체 확률: ${percent(result.recessionProbability * 100, 0)} / 고실업 확률: ${percent(result.highUnemploymentProbability * 100, 0)} / 재정위험 확률: ${percent(result.fiscalRiskProbability * 100, 0)}
-        `);
-      } catch (error) {
-        recordRuntimeError(error, "몬테카를로 오류", "불확실성 분석 중 오류가 감지되었습니다.");
-        setHtmlIfChanged(els.dataLabResult, `<strong>몬테카를로 오류</strong><br>${escapeHtml(error?.message || String(error))}`);
-      }
+      return runMonteCarloModePanel(createDataLabContext());
     }
 
     function updateModelReliabilityPanel() {
-      if (els.accountingValidationValue) {
-        const validation = state.flowLedger?.lastValidation;
-        els.accountingValidationValue.textContent = validation ? `${validation.status} · ${validation.summary}` : "대기";
-      }
-      if (els.modelConfidenceValue) {
-        const reliability = state.modelReliability || createInitialModelReliability();
-        const loss = reliability.calibrationLoss == null ? "" : ` / 손실 ${round(reliability.calibrationLoss, 2).toFixed(2)}`;
-        els.modelConfidenceValue.textContent = `${reliability.level}${loss}`;
-      }
+      return updateModelReliabilityPanelView(createDataLabContext());
+    }
+
+    function createDataLabContext() {
+      return {
+        els,
+        state,
+        services: {
+          calibrateParameters,
+          defaultModelParameters,
+          loadCalibrationDataset,
+          runBacktest,
+          runMonteCarloScenario
+        },
+        helpers: {
+          createInitialModelReliability,
+          escapeHtml,
+          isLargeEconomyMode,
+          macroMoney,
+          percent,
+          recordRuntimeError,
+          round,
+          setHtmlIfChanged,
+          updateSfcAccountingLayer
+        }
+      };
     }
 
     function getPolicyComparisonVariants() {
@@ -10213,22 +10158,7 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
     }
 
     function captureSimulationSnapshot() {
-      const charts = state.charts;
-      const controls = {
-        interest: els.interestSlider.value,
-        tax: els.taxSlider.value,
-        corporateTax: els.corporateTaxSlider.value,
-        vat: els.vatSlider.value,
-        spending: els.spendingSlider.value,
-        wage: els.wageSlider.value,
-        inflation: els.inflationSlider.value,
-        scenario: els.scenarioSelect.value
-      };
-      return {
-        json: JSON.stringify(state, (key, value) => key === "charts" ? undefined : value),
-        charts,
-        controls
-      };
+      return captureSimulationSnapshotRuntime(state, els);
     }
 
     function captureUiSafeSnapshot() {
@@ -10236,36 +10166,11 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
     }
 
     function captureCoreStateSignature() {
-      const m = state.metrics || {};
-      return {
-        tick: safeNumber(state.tick, 0),
-        gdp: round(safeNumber(m.gdp, 0), 3),
-        unemploymentRate: round(safeNumber(m.unemploymentRate, 0), 3),
-        inflation: round(safeNumber(m.inflation, 0), 3),
-        financialConditionIndex: round(safeNumber(m.financialConditionIndex, 0), 3),
-        creditSupplyIndex: round(safeNumber(m.creditSupplyIndex, 100), 3),
-        bankHealthIndex: round(safeNumber(m.bankHealthIndex, 100), 3),
-        stockIndexPoints: round(safeNumber(m.stockIndexPoints, 2500), 3),
-        residentialIndex: round(safeNumber(m.residentialIndex, safeNumber(m.housingIndex, 100)), 3)
-      };
+      return captureCoreStateSignatureRuntime(state, { round, safeNumber });
     }
 
     function compareCoreStateSignature(before, after) {
-      const tolerance = {
-        tick: 0,
-        gdp: 0.01,
-        unemploymentRate: 0.01,
-        inflation: 0.01,
-        financialConditionIndex: 0.01,
-        creditSupplyIndex: 0.01,
-        bankHealthIndex: 0.01,
-        stockIndexPoints: 0.05,
-        residentialIndex: 0.01
-      };
-      return Object.keys(before || {}).filter((key) => {
-        const allowed = tolerance[key] ?? 0.01;
-        return Math.abs(safeNumber(before[key], 0) - safeNumber(after?.[key], 0)) > allowed;
-      });
+      return compareCoreStateSignatureRuntime(before, after, safeNumber);
     }
 
     function warnIfStateRestoreFailed(label, beforeSignature, targetElement = null) {
@@ -10282,22 +10187,7 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
     }
 
     function restoreSimulationSnapshot(snapshot) {
-      if (!snapshot) return;
-      const restored = JSON.parse(snapshot.json);
-      Object.keys(state).forEach((key) => delete state[key]);
-      Object.assign(state, restored);
-      state.charts = snapshot.charts || {};
-      if (snapshot.controls) {
-        els.interestSlider.value = snapshot.controls.interest;
-        els.taxSlider.value = snapshot.controls.tax;
-        els.corporateTaxSlider.value = snapshot.controls.corporateTax;
-        els.vatSlider.value = snapshot.controls.vat;
-        els.spendingSlider.value = snapshot.controls.spending;
-        els.wageSlider.value = snapshot.controls.wage;
-        els.inflationSlider.value = snapshot.controls.inflation;
-        els.scenarioSelect.value = snapshot.controls.scenario;
-      }
-      updateControlLabels();
+      restoreSimulationSnapshotRuntime(state, els, snapshot, updateControlLabels);
     }
 
     function restoreUiSafeSnapshot(snapshot) {
@@ -11999,15 +11889,7 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
 
     function recordFlow(fromType, fromId, toType, toId, amount, kind) {
       if (!Number.isFinite(amount) || amount <= 0) return;
-      if (!state.flowLedger) state.flowLedger = createFlowLedger();
-      recordEconomicFlow(state.flowLedger, {
-        period: state.tick,
-        from: { type: fromType, id: fromId },
-        to: { type: toType, id: toId },
-        amount,
-        kind,
-        description: `${fromType}→${toType}`
-      });
+      recordLedgerFlowFromUiFlow(state, { fromType, fromId, toType, toId, amount, kind });
 
       const flowThreshold = Math.max(36, state.metrics.averagePrice * 3.4, effectiveBaseWage() * 2.2);
       const shouldRecord = amount >= flowThreshold || (kind === "investment" && amount > 14);
