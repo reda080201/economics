@@ -1,0 +1,92 @@
+{
+  "country": "us",
+  "sourceNote": "교육용 샘플 데이터입니다. 실제 통계 원자료가 아니라 방향성 검증용 축약 시계열입니다.",
+  "gdp": [
+    { "date": "2019-01", "value": 100, "source": "sample", "seriesCode": "US_GDP" },
+    { "date": "2020-01", "value": 97.2, "source": "sample", "seriesCode": "US_GDP" },
+    { "date": "2021-01", "value": 103.0, "source": "sample", "seriesCode": "US_GDP" },
+    { "date": "2022-01", "value": 105.1, "source": "sample", "seriesCode": "US_GDP" },
+    { "date": "2023-01", "value": 107.8, "source": "sample", "seriesCode": "US_GDP" },
+    { "date": "2024-01", "value": 110.9, "source": "sample", "seriesCode": "US_GDP" }
+  ],
+  "cpi": [
+    { "date": "2019-01", "value": 100, "source": "sample", "seriesCode": "US_CPI" },
+    { "date": "2020-01", "value": 101.2, "source": "sample", "seriesCode": "US_CPI" },
+    { "date": "2021-01", "value": 106.0, "source": "sample", "seriesCode": "US_CPI" },
+    { "date": "2022-01", "value": 114.4, "source": "sample", "seriesCode": "US_CPI" },
+    { "date": "2023-01", "value": 118.7, "source": "sample", "seriesCode": "US_CPI" },
+    { "date": "2024-01", "value": 122.0, "source": "sample", "seriesCode": "US_CPI" }
+  ],
+  "unemployment": [
+    { "date": "2019-01", "value": 3.7, "source": "sample", "seriesCode": "US_UNEMP" },
+    { "date": "2020-01", "value": 8.1, "source": "sample", "seriesCode": "US_UNEMP" },
+    { "date": "2021-01", "value": 5.4, "source": "sample", "seriesCode": "US_UNEMP" },
+    { "date": "2022-01", "value": 3.7, "source": "sample", "seriesCode": "US_UNEMP" },
+    { "date": "2023-01", "value": 3.6, "source": "sample", "seriesCode": "US_UNEMP" },
+    { "date": "2024-01", "value": 4.0, "source": "sample", "seriesCode": "US_UNEMP" }
+  ],
+  "policyRate": [
+    { "date": "2019-01", "value": 1.75, "source": "sample", "seriesCode": "US_RATE" },
+    { "date": "2020-01", "value": 0.25, "source": "sample", "seriesCode": "US_RATE" },
+    { "date": "2021-01", "value": 0.25, "source": "sample", "seriesCode": "US_RATE" },
+    { "date": "2022-01", "value": 4.5, "source": "sample", "seriesCode": "US_RATE" },
+    { "date": "2023-01", "value": 5.25, "source": "sample", "seriesCode": "US_RATE" },
+    { "date": "2024-01", "value": 5.25, "source": "sample", "seriesCode": "US_RATE" }
+  ],
+  "governmentDebt": [
+    { "date": "2019-01", "value": 107, "source": "sample", "seriesCode": "US_DEBT" },
+    { "date": "2020-01", "value": 126, "source": "sample", "seriesCode": "US_DEBT" },
+    { "date": "2021-01", "value": 122, "source": "sample", "seriesCode": "US_DEBT" },
+    { "date": "2022-01", "value": 119, "source": "sample", "seriesCode": "US_DEBT" },
+    { "date": "2023-01", "value": 121, "source": "sample", "seriesCode": "US_DEBT" },
+    { "date": "2024-01", "value": 123, "source": "sample", "seriesCode": "US_DEBT" }
+  ],
+  "householdDebt": [
+    { "date": "2019-01", "value": 75, "source": "sample", "seriesCode": "US_HHDEBT" },
+    { "date": "2020-01", "value": 78, "source": "sample", "seriesCode": "US_HHDEBT" },
+    { "date": "2021-01", "value": 77, "source": "sample", "seriesCode": "US_HHDEBT" },
+    { "date": "2022-01", "value": 75, "source": "sample", "seriesCode": "US_HHDEBT" },
+    { "date": "2023-01", "value": 74, "source": "sample", "seriesCode": "US_HHDEBT" },
+    { "date": "2024-01", "value": 73, "source": "sample", "seriesCode": "US_HHDEBT" }
+  ],
+  "housePriceIndex": [
+    { "date": "2019-01", "value": 100, "source": "sample", "seriesCode": "US_HPI" },
+    { "date": "2020-01", "value": 108, "source": "sample", "seriesCode": "US_HPI" },
+    { "date": "2021-01", "value": 126, "source": "sample", "seriesCode": "US_HPI" },
+    { "date": "2022-01", "value": 132, "source": "sample", "seriesCode": "US_HPI" },
+    { "date": "2023-01", "value": 134, "source": "sample", "seriesCode": "US_HPI" },
+    { "date": "2024-01", "value": 139, "source": "sample", "seriesCode": "US_HPI" }
+  ],
+  "stockIndex": [
+    { "date": "2019-01", "value": 100, "source": "sample", "seriesCode": "US_STOCK" },
+    { "date": "2020-01", "value": 116, "source": "sample", "seriesCode": "US_STOCK" },
+    { "date": "2021-01", "value": 145, "source": "sample", "seriesCode": "US_STOCK" },
+    { "date": "2022-01", "value": 118, "source": "sample", "seriesCode": "US_STOCK" },
+    { "date": "2023-01", "value": 142, "source": "sample", "seriesCode": "US_STOCK" },
+    { "date": "2024-01", "value": 168, "source": "sample", "seriesCode": "US_STOCK" }
+  ],
+  "exchangeRate": [
+    { "date": "2019-01", "value": 100, "source": "sample", "seriesCode": "US_FX" },
+    { "date": "2020-01", "value": 96, "source": "sample", "seriesCode": "US_FX" },
+    { "date": "2021-01", "value": 98, "source": "sample", "seriesCode": "US_FX" },
+    { "date": "2022-01", "value": 109, "source": "sample", "seriesCode": "US_FX" },
+    { "date": "2023-01", "value": 105, "source": "sample", "seriesCode": "US_FX" },
+    { "date": "2024-01", "value": 103, "source": "sample", "seriesCode": "US_FX" }
+  ],
+  "exports": [
+    { "date": "2019-01", "value": 100, "source": "sample", "seriesCode": "US_EXP" },
+    { "date": "2020-01", "value": 88, "source": "sample", "seriesCode": "US_EXP" },
+    { "date": "2021-01", "value": 101, "source": "sample", "seriesCode": "US_EXP" },
+    { "date": "2022-01", "value": 112, "source": "sample", "seriesCode": "US_EXP" },
+    { "date": "2023-01", "value": 116, "source": "sample", "seriesCode": "US_EXP" },
+    { "date": "2024-01", "value": 119, "source": "sample", "seriesCode": "US_EXP" }
+  ],
+  "imports": [
+    { "date": "2019-01", "value": 100, "source": "sample", "seriesCode": "US_IMP" },
+    { "date": "2020-01", "value": 90, "source": "sample", "seriesCode": "US_IMP" },
+    { "date": "2021-01", "value": 110, "source": "sample", "seriesCode": "US_IMP" },
+    { "date": "2022-01", "value": 122, "source": "sample", "seriesCode": "US_IMP" },
+    { "date": "2023-01", "value": 119, "source": "sample", "seriesCode": "US_IMP" },
+    { "date": "2024-01", "value": 124, "source": "sample", "seriesCode": "US_IMP" }
+  ]
+}

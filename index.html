@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Agent Macro Lab - 데이터 보정형 거시경제 정책 실험실</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="./styles/main.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"></div>
+      <div>
+        <h1>Agent Macro Lab</h1>
+        <p class="subtitle">데이터 보정형 거시경제 정책 실험실</p>
+      </div>
+    </div>
+    <div class="status-pill">
+      <span id="runPulse" class="pulse"></span>
+      <strong id="runState">일시정지</strong>
+      <span class="hint">단계 <span id="tickDisplay">0</span></span>
+    </div>
+  </header>
+
+  <div class="educational-disclaimer">
+    이 도구는 실제 투자 판단이나 정책 결정에 사용할 수 있는 예측기가 아닙니다. 실제·샘플 거시 데이터를 참고해 경제 구조와 정책 전달 경로를 탐구하기 위한 실험용 모델입니다.
+  </div>
+
+  <div class="dashboard">
+    <aside class="panel controls">
+      <div class="panel-title">
+        <h2>정책 및 실행</h2>
+        <span class="hint">실시간 조정</span>
+      </div>
+
+      <div class="button-grid">
+        <button id="startBtn" class="btn">시작</button>
+        <button id="pauseBtn" class="btn secondary">일시정지</button>
+        <button id="resetBtn" class="btn secondary">초기화</button>
+        <button id="stepBtn" class="btn secondary">1단계 진행</button>
+        <button id="shockBtn" class="btn warn full">외생 충격 적용</button>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="gameModeSelect">
+          <strong>분석 시나리오</strong>
+          <span id="modeStatusValue">기본 실험</span>
+        </label>
+        <select id="gameModeSelect">
+          <option value="sandbox">기본 실험</option>
+          <option value="policy">정책 안정화</option>
+          <option value="crisis">침체 회복</option>
+          <option value="inflation">인플레이션 안정화</option>
+        </select>
+        <button id="startGameModeBtn" class="btn full" style="margin-top: 10px;">시나리오 시작 / 재시작</button>
+        <p class="hint">기본 실험은 자유 관찰, 다른 시나리오는 정책 목표와 안정성 조건이 있습니다.</p>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="speedSlider">
+          <strong>시뮬레이션 속도</strong>
+          <span id="speedValue">8 단계/초</span>
+        </label>
+        <input id="speedSlider" type="range" min="1" max="24" step="1" value="8">
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="performanceModeSelect">
+          <strong>성능 모드</strong>
+          <span>기본값: 보통</span>
+        </label>
+        <select id="performanceModeSelect">
+          <option value="normal">보통</option>
+          <option value="light">가벼움</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="consumerSlider">
+          <strong>소비자 수</strong>
+          <span id="consumerValue">260명</span>
+        </label>
+        <input id="consumerSlider" type="range" min="80" max="720" step="5" value="260">
+        <p class="hint">변경하면 에이전트 구성이 새로 생성됩니다.</p>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="producerSlider">
+          <strong>생산자 수</strong>
+          <span id="producerValue">36개</span>
+        </label>
+        <input id="producerSlider" type="range" min="18" max="120" step="1" value="36">
+        <p class="hint">기업 수 변경도 초기화를 동반합니다.</p>
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="interestSlider">
+          <strong>정책 금리</strong>
+          <span id="interestValue">4.50%</span>
+        </label>
+        <input id="interestSlider" type="range" min="0" max="20" step="0.25" value="4.5">
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="taxSlider">
+          <strong>소득세율</strong>
+          <span id="taxValue">16.0%</span>
+        </label>
+        <input id="taxSlider" type="range" min="0" max="45" step="0.5" value="16">
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="corporateTaxSlider">
+          <strong>법인세율</strong>
+          <span id="corporateTaxValue">18.0%</span>
+        </label>
+        <input id="corporateTaxSlider" type="range" min="0" max="45" step="0.5" value="18">
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="vatSlider">
+          <strong>부가세율</strong>
+          <span id="vatValue">10.0%</span>
+        </label>
+        <input id="vatSlider" type="range" min="0" max="25" step="0.5" value="10">
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="spendingSlider">
+          <strong>정부 지출</strong>
+          <span id="spendingValue">₩640</span>
+        </label>
+        <input id="spendingSlider" type="range" min="0" max="1600" step="20" value="640">
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="wageSlider">
+          <strong>기준 임금</strong>
+          <span id="wageValue">₩12.0</span>
+        </label>
+        <input id="wageSlider" type="range" min="5" max="30" step="0.5" value="12">
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="inflationSlider">
+          <strong>물가 민감도</strong>
+          <span id="inflationSensitivityValue">0.65</span>
+        </label>
+        <input id="inflationSlider" type="range" min="0.2" max="1.5" step="0.05" value="0.65">
+      </div>
+
+      <div class="control-group">
+        <label class="control-label" for="scenarioSelect">
+          <strong>시나리오 프리셋</strong>
+          <span>선택 후 적용</span>
+        </label>
+        <select id="scenarioSelect">
+          <optgroup label="기본 캘리브레이션">
+            <option value="baseline">균형 성장 기본값</option>
+            <option value="stableGrowth">안정 성장</option>
+            <option value="highRateTightening">고금리 긴축</option>
+            <option value="lowRateLongRun">저금리 장기화</option>
+            <option value="stagflation">스태그플레이션</option>
+          </optgroup>
+          <optgroup label="정책·경기 국면">
+            <option value="boom">저금리 투자 붐</option>
+            <option value="inflation">고물가 긴축 압박</option>
+            <option value="recovery">침체 회복 정책</option>
+            <option value="welfare">고세율 고지출 국가</option>
+            <option value="financialStress">금융불안</option>
+          </optgroup>
+          <optgroup label="시장 실패·성공">
+            <option value="housingOverheat">부동산 과열</option>
+            <option value="stockOverheat">주식시장 과열</option>
+            <option value="creditExcessFailure">신용 과다</option>
+            <option value="supplyBottleneckFailure">공급 병목</option>
+            <option value="productivityExpansion">생산성 확장</option>
+          </optgroup>
+          <optgroup label="대외·공급 충격">
+            <option value="commodityShock">원자재 충격</option>
+            <option value="foreignDemandBoom">해외수요 호조</option>
+            <option value="foreignCapitalOutflow">해외 자본유출</option>
+            <option value="agricultureShock">농업 공급 충격</option>
+            <option value="energyPriceShock">에너지 가격 충격</option>
+          </optgroup>
+          <optgroup label="역사 시나리오">
+            <option value="koreaImf1997">한국 IMF 1997</option>
+            <option value="usFinancialCrisis2007">미국 금융위기 2007</option>
+            <option value="japanBubbleEconomy">일본 버블경제</option>
+            <option value="germanyReunification">통일 이후 독일</option>
+            <option value="turkiyeInflation2018">튀르키예 고물가 2018</option>
+          </optgroup>
+        </select>
+        <button id="applyScenarioBtn" class="btn full" style="margin-top: 10px;">프리셋 적용</button>
+        <button id="historicalScenarioBtn" class="btn secondary full" style="margin-top: 8px;">역사 전개 시작</button>
+        <label class="toggle-row">
+          <input id="autoPolicyToggle" type="checkbox">
+          자동 통화정책: 물가와 실업에 따라 금리 조정
+        </label>
+        <label class="toggle-row">
+          <input id="randomPolicyEventsToggle" type="checkbox">
+          정책 선택 이벤트 사용
+        </label>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="panel game-status">
+        <div class="game-status-grid">
+          <div class="game-stat">
+            <span>시간</span>
+            <strong id="calendarValue">1년 1월</strong>
+          </div>
+          <div class="game-stat">
+            <span>국면</span>
+            <strong id="phaseValue">초기 균형</strong>
+          </div>
+          <div class="game-stat">
+            <span>안정성 지수</span>
+            <strong id="scoreValue">0</strong>
+          </div>
+          <div class="game-stat">
+            <span>최고 / 추세</span>
+            <strong id="bestScoreValue">0 / 0</strong>
+          </div>
+        </div>
+        <div id="feedbackBanners" class="feedback-banners"></div>
+      </section>
+
+      <section class="kpi-grid">
+        <article class="kpi">
+          <span>GDP형 지출</span>
+          <strong id="gdpValue">₩0</strong>
+          <small id="outputValue">생산가치 ₩0</small>
+        </article>
+        <article class="kpi">
+          <span>소비</span>
+          <strong id="consumptionValue">₩0</strong>
+          <small>가계가 기업에서 구매한 금액</small>
+        </article>
+        <article class="kpi">
+          <span>투자</span>
+          <strong id="investmentValue">₩0</strong>
+          <small>기업의 설비 및 생산성 확대</small>
+        </article>
+        <article class="kpi">
+          <span>실업률</span>
+          <strong id="unemploymentValue">0.0%</strong>
+          <small id="employmentValue">고용 0명</small>
+        </article>
+        <article class="kpi">
+          <span>평균 가격과 물가</span>
+          <strong id="priceValue">₩0.00</strong>
+          <small id="inflationValue">물가상승률 0.00%</small>
+        </article>
+        <article class="kpi">
+          <span>정책 금리</span>
+          <strong id="rateValue">4.50%</strong>
+          <small>소비와 투자 의사결정에 직접 반영</small>
+        </article>
+        <article class="kpi">
+          <span>정부 재정수지</span>
+          <strong id="balanceValue">₩0</strong>
+          <small id="debtValue">누적 부채 ₩0</small>
+        </article>
+        <article class="kpi">
+          <span>평균 가계 현금</span>
+          <strong id="householdCashValue">₩0</strong>
+          <small id="confidenceValue">소비 심리 0.00</small>
+        </article>
+        <article class="kpi">
+          <span>평균 기업 현금</span>
+          <strong id="firmCashValue">₩0</strong>
+          <small id="inventoryValue">재고 0 단위</small>
+        </article>
+      </section>
+
+      <section class="panel sim-card">
+        <div class="sim-head">
+          <h2>경제 네트워크 시각화</h2>
+          <span id="shockBadge" class="shock-badge">충격 없음</span>
+        </div>
+        <div class="canvas-wrap">
+          <canvas id="simCanvas" aria-label="소비자, 생산자, 정부의 거래 흐름 캔버스"></canvas>
+          <div id="canvasTooltip" class="canvas-tooltip"></div>
+        </div>
+        <div class="legend">
+          <span class="legend-item"><i class="dot consumer"></i>고용 소비자</span>
+          <span class="legend-item"><i class="dot unemployed"></i>실업 소비자</span>
+          <span class="legend-item"><i class="dot producer"></i>생산자</span>
+          <span class="legend-item"><i class="dot gov"></i>정부</span>
+          <span class="legend-item"><i class="dot money"></i>거래, 임금, 세금, 지출 흐름</span>
+        </div>
+      </section>
+
+      <section class="panel charts-card">
+        <div class="sim-head">
+          <h2>실시간 거시 지표</h2>
+          <span class="hint">최근 20개월</span>
+        </div>
+        <div class="charts-grid">
+          <div class="chart-box">
+            <canvas id="gdpChart"></canvas>
+          </div>
+          <div class="chart-box">
+            <canvas id="priceChart"></canvas>
+          </div>
+          <div class="chart-box">
+            <canvas id="unemploymentChart"></canvas>
+          </div>
+          <details class="more-charts">
+            <summary>추가 차트</summary>
+            <div class="more-charts-grid">
+              <div class="chart-box">
+                <canvas id="demandChart"></canvas>
+              </div>
+              <div class="chart-box">
+                <canvas id="governmentChart"></canvas>
+              </div>
+              <div class="chart-box">
+                <canvas id="assetChart"></canvas>
+              </div>
+              <div class="chart-box">
+                <canvas id="firmStockChart"></canvas>
+              </div>
+              <div class="chart-box">
+                <canvas id="financialChart"></canvas>
+              </div>
+              <div class="chart-box">
+                <canvas id="safeAssetChart"></canvas>
+              </div>
+              <div class="chart-box">
+                <canvas id="sentimentChart"></canvas>
+              </div>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <details class="panel model-lab">
+        <summary>
+          <span>경제 모형 분석실</span>
+          <small>단순 거시모형으로 현재 경제 해석</small>
+        </summary>
+        <div class="model-lab-body">
+          <div class="model-toolbar">
+            <label class="control-label compact" for="modelSelector">
+              <strong>모형</strong>
+              <select id="modelSelector">
+                <option value="keynesian">케인즈 승수 모형</option>
+                <option value="phillips">필립스 곡선</option>
+                <option value="taylor">테일러 준칙</option>
+              </select>
+            </label>
+            <button id="useCurrentEconomyBtn" class="btn secondary" type="button">현재 경제 사용</button>
+            <button id="runModelBtn" class="btn" type="button">분석 실행</button>
+          </div>
+          <div class="model-badges" aria-label="추가 예정 모형">
+            <span class="model-badge">IS-LM 준비중</span>
+            <span class="model-badge">AD-AS 준비중</span>
+            <span class="model-badge">솔로우 준비중</span>
+          </div>
+          <p class="hint">이 모형들은 교육용 단순화 모형이며 실제 예측이 아닙니다.</p>
+          <div class="model-lab-grid">
+            <div id="modelInputs" class="model-inputs"></div>
+            <div class="model-results">
+              <div id="modelResultSummary" class="selected-agent">모델을 선택하고 실행하면 결과가 표시됩니다.</div>
+              <div class="model-chart-box">
+                <canvas id="modelChart"></canvas>
+              </div>
+              <div id="modelInterpretation" class="selected-agent subtle">짧은 해석이 여기에 표시됩니다.</div>
+            </div>
+          </div>
+          <div class="model-comparison">
+            <h3>모형별 해석</h3>
+            <ul id="modelComparisonList"></ul>
+          </div>
+          <details class="section">
+            <summary>추후 추가 예정</summary>
+            <p class="hint">IS-LM, AD-AS, 솔로우 성장모형은 성능 안정화 후 간단한 버전으로 추가할 수 있습니다.</p>
+          </details>
+        </div>
+      </details>
+    </main>
+
+    <aside class="panel inspector">
+      <div class="panel-title">
+        <h2>지금 무슨 일이 일어나나요?</h2>
+        <span class="hint">요약</span>
+      </div>
+
+      <div class="section">
+        <h3>현재 진단</h3>
+        <div id="macroNarrative" class="selected-agent">몇 개월이 지나면 현재 병목이 요약됩니다.</div>
+      </div>
+
+      <div class="section">
+        <h3>전달 경로</h3>
+        <div id="transmissionMapValue" class="transmission-chain">
+          <div class="chain-node">경제 신호가 누적되면 주요 경로가 표시됩니다.</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h3>정책 해석</h3>
+        <div id="policyRecommendationValue" class="selected-agent">정책 조정 후 권고 해석이 표시됩니다.</div>
+      </div>
+
+      <details class="section" open>
+        <summary>위기 조기경보등</summary>
+        <div id="earlyWarningSummaryValue" class="selected-agent">경제 신호가 누적되면 상위 위험 3개가 표시됩니다.</div>
+      </details>
+
+      <details class="section" open>
+        <summary>원인 분해</summary>
+        <div id="causalDecompositionValue" class="selected-agent">현재 변화를 설명하는 주요 압력이 표시됩니다.</div>
+      </details>
+
+      <details class="section">
+        <summary>정책 목표</summary>
+        <div id="missionSummary" class="selected-agent">기본 실험: 정책 전달 경로를 관찰하세요.</div>
+        <ul id="objectiveList" class="objective-list" style="margin-top: 8px;"></ul>
+      </details>
+
+      <div id="policyEventCard" class="event-card section">
+        <h3 id="policyEventTitle">정책 선택 이벤트</h3>
+        <p id="policyEventDescription"></p>
+        <div id="policyEventOptions" class="event-options"></div>
+      </div>
+
+      <details class="section">
+        <summary>선택한 에이전트</summary>
+        <div id="selectedAgent" class="selected-agent">캔버스 노드를 클릭하면 상세 상태가 표시됩니다.</div>
+      </details>
+
+      <details class="section">
+        <summary>심리 및 기대</summary>
+        <ul class="metric-list compact" style="margin-top: 8px;">
+          <li><span>소비심리</span><strong id="sentConsumerConfidenceValue">보통</strong></li>
+          <li><span>기업심리</span><strong id="sentBusinessConfidenceValue">보통</strong></li>
+          <li><span>은행 위험선호</span><strong id="sentBankRiskAppetiteValue">보통</strong></li>
+          <li><span>시장 위험심리</span><strong id="sentMarketRiskValue">보통</strong></li>
+          <li><span>인플레이션 기대</span><strong id="sentInflationExpectationValue">2.0%</strong></li>
+          <li><span>경기침체 우려</span><strong id="sentRecessionFearValue">보통</strong></li>
+          <li><span>재정 신뢰도</span><strong id="sentFiscalCredibilityValue">보통</strong></li>
+        </ul>
+        <div id="sentimentNarrativeValue" class="selected-agent subtle" style="margin-top: 8px;">심리 지표는 경제 여건이 누적되면 갱신됩니다.</div>
+        <div class="inspector-summary-note">기본 화면은 핵심 진단만 보여줍니다. 계층·시장·금융 세부 지표는 아래 접힌 섹션에서 확인하세요.</div>
+      </details>
+
+      <details class="section">
+        <summary>계층별 분석</summary>
+        <div id="classAnalysisPanelValue" class="class-analysis-grid">
+          <div class="class-card">계층별 소득, 자산, 부채부담과 요구 사항이 시뮬레이션 후 표시됩니다.</div>
+        </div>
+      </details>
+
+      <details class="section">
+        <summary>시장 심리</summary>
+        <ul class="metric-list compact" style="margin-top: 8px;">
+          <li><span>주식 공포지수</span><strong id="stockFearIndexValue">18</strong></li>
+          <li><span>탐욕/공포 상태</span><strong id="fearGreedValue">중립</strong></li>
+          <li><span>루머 강도</span><strong id="rumorIntensityValue">낮음</strong></li>
+          <li><span>정보 불확실성</span><strong id="informationUncertaintyValue">낮음</strong></li>
+          <li><span>안전자산 선호</span><strong id="safeHavenPsychologyValue">낮음</strong></li>
+          <li><span>기대 수익 심리</span><strong id="stockExpectationValue">중립</strong></li>
+          <li><span>변동성</span><strong id="stockVolatilityIndexValue">보통</strong></li>
+        </ul>
+      </details>
+
+      <details class="section">
+        <summary>정보 격차</summary>
+        <ul class="metric-list compact" style="margin-top: 8px;">
+          <li><span>가계 정보 정확도</span><strong id="householdInfoAccuracyValue">보통</strong></li>
+          <li><span>기업 수요 인식</span><strong id="firmDemandPerceptionValue">보통</strong></li>
+          <li><span>은행 위험 인식</span><strong id="bankRiskPerceptionValue">보통</strong></li>
+          <li><span>시장 과잉반응</span><strong id="marketOverreactionValue">낮음</strong></li>
+          <li><span>정책 명확성</span><strong id="policyClarityValue">보통</strong></li>
+          <li><span>오인식 지수</span><strong id="misperceptionIndexValue">낮음</strong></li>
+        </ul>
+        <div id="informationNarrativeValue" class="selected-agent subtle" style="margin-top: 8px;">정보 정확도가 낮을수록 소비와 투자가 실제 경제보다 늦거나 과하게 반응합니다.</div>
+      </details>
+
+      <details class="section">
+        <summary>행동경제 심리</summary>
+        <ul class="metric-list compact" style="margin-top: 8px;">
+          <li><span>부동산 불패 믿음</span><strong id="realEstateBeliefValue">보통</strong></li>
+          <li><span>주식 불패 믿음</span><strong id="stockBeliefValue">보통</strong></li>
+          <li><span>군중심리</span><strong id="herdIntensityValue">낮음</strong></li>
+          <li><span>FOMO</span><strong id="fomoIntensityValue">낮음</strong></li>
+          <li><span>손실회피</span><strong id="lossAversionValue">보통</strong></li>
+          <li><span>확증편향</span><strong id="confirmationBiasValue">보통</strong></li>
+          <li><span>패닉 매도 압력</span><strong id="panicSellingValue">낮음</strong></li>
+          <li><span>가치-가격 괴리</span><strong id="behaviorMispricingValue">낮음</strong></li>
+        </ul>
+        <div id="behaviorNarrativeValue" class="selected-agent subtle" style="margin-top: 8px;">믿음과 편향은 기초여건과 정보 격차가 누적되면 표시됩니다.</div>
+      </details>
+
+      <details class="section" open>
+        <summary>균형 진단</summary>
+        <div id="diagBalanceSummaryValue" class="balance-summary">현재 안정적입니다.</div>
+        <ul class="metric-list compact" style="margin-top: 8px;">
+          <li><span>최근 20개월 평균 실업률</span><strong id="diagAvgUnemploymentValue">0.0%</strong></li>
+          <li><span>최근 20개월 평균 물가상승률</span><strong id="diagAvgInflationValue">0.00%</strong></li>
+          <li><span>최근 20개월 평균 GDP</span><strong id="diagAvgGdpValue">₩0</strong></li>
+          <li><span>잠재 산출</span><strong id="diagPotentialOutputValue">₩0</strong></li>
+          <li><span>산출갭</span><strong id="diagOutputGapValue">0.0%p</strong></li>
+          <li><span>설비가동률</span><strong id="diagCapacityUtilizationValue">0.0%</strong></li>
+          <li><span>실업갭</span><strong id="diagUnemploymentGapValue">0.0%p</strong></li>
+          <li><span>물가갭</span><strong id="diagInflationGapValue">0.0%p</strong></li>
+          <li><span>정책갭</span><strong id="diagPolicyGapValue">0.0%p</strong></li>
+          <li><span>평균 기업 고용 수</span><strong id="diagAvgFirmEmploymentValue">0.0명</strong></li>
+          <li><span>채용 동결 기업 비율</span><strong id="diagHiringFreezeRatioValue">0.0%</strong></li>
+          <li><span>금융 스트레스 기업 비율</span><strong id="diagFirmStressRatioValue">0.0%</strong></li>
+          <li><span>평균 재고 / 예상수요</span><strong id="diagInventoryDemandRatioValue">0.00</strong></li>
+          <li><span>정책 금리 목표 / 실제</span><strong id="diagInterestPolicyValue">0.00% / 0.00%</strong></li>
+          <li><span>소득세 목표 / 실제</span><strong id="diagTaxPolicyValue">0.0% / 0.0%</strong></li>
+          <li><span>법인세 목표 / 실제</span><strong id="diagCorporateTaxPolicyValue">0.0% / 0.0%</strong></li>
+          <li><span>정부지출 목표 / 실제</span><strong id="diagSpendingPolicyValue">₩0 / ₩0</strong></li>
+          <li><span>정부 부채/GDP</span><strong id="diagDebtToGdpValue">0.0%</strong></li>
+          <li><span>정부 이자비용</span><strong id="diagGovernmentDebtServiceValue">₩0</strong></li>
+          <li><span>재정 여력</span><strong id="diagFiscalSpaceValue">충분함</strong></li>
+          <li><span>평균 가계 부채부담</span><strong id="diagHouseholdDebtBurdenValue">0.0%</strong></li>
+          <li><span>평균 기업 DSCR</span><strong id="diagFirmDscrValue">0.00</strong></li>
+          <li><span>부채 스트레스 가계</span><strong id="diagHouseholdDebtStressRatioValue">0.0%</strong></li>
+          <li><span>부채 스트레스 기업</span><strong id="diagFirmDebtStressRatioValue">0.0%</strong></li>
+          <li><span>자산 버블 위험</span><strong id="diagAssetBubbleRiskValue">낮음</strong></li>
+          <li><span>주택구입부담</span><strong id="diagHousingAffordabilityValue">0.00</strong></li>
+          <li><span>자산효과</span><strong id="diagWealthEffectValue">0.0%</strong></li>
+          <li><span>금융시장 상태</span><strong id="diagFinancialMarketSummaryValue">정상</strong></li>
+          <li><span>국채금리</span><strong id="diagBondYieldValue">0.00%</strong></li>
+          <li><span>신용스프레드</span><strong id="diagCreditSpreadValue">0.00%p</strong></li>
+          <li><span>은행위기 위험</span><strong id="diagBankingCrisisRiskValue">낮음</strong></li>
+        </ul>
+        <div id="diagWarningsValue" class="balance-warnings">경고 없음</div>
+        <div class="balance-test-actions">
+          <button id="balanceQuickTestBtn" class="btn secondary full" type="button">120개월 빠른 테스트</button>
+          <button id="scenarioValidationBtn" class="btn secondary full" type="button">시나리오 검증</button>
+          <details class="section">
+            <summary>정책 비교</summary>
+            <label>
+              비교 기간
+              <select id="policyComparisonHorizon">
+                <option value="24">24개월</option>
+                <option value="60" selected>60개월</option>
+                <option value="120">120개월</option>
+              </select>
+            </label>
+            <button id="policyComparisonBtn" class="btn secondary full" type="button">정책 비교 실행</button>
+            <div id="policyComparisonSummaryValue" class="selected-agent subtle">정책별 성장·안정·계층·금융 우위가 요약됩니다.</div>
+            <div id="policyComparisonResult" class="balance-test-result">현재 경제를 기준으로 대안 정책의 교육용 경로를 비교합니다.</div>
+          </details>
+          <details class="section">
+            <summary>데이터 보정·검증</summary>
+            <label>
+              샘플 데이터
+              <select id="calibrationCountrySelect">
+                <option value="korea">한국 샘플</option>
+                <option value="us">미국 샘플</option>
+              </select>
+            </label>
+            <div class="button-grid" style="margin-top: 8px;">
+              <button id="calibrationBtn" class="btn secondary" type="button">데이터 보정 실행</button>
+              <button id="backtestBtn" class="btn secondary" type="button">과거 구간 검증</button>
+              <button id="monteCarloBtn" class="btn secondary" type="button">불확실성 분석</button>
+            </div>
+            <ul class="metric-list compact" style="margin-top: 8px;">
+              <li><span>회계 검증</span><strong id="accountingValidationValue">대기</strong></li>
+              <li><span>모델 신뢰도</span><strong id="modelConfidenceValue">보정 전</strong></li>
+            </ul>
+            <div id="dataLabResult" class="balance-test-result">로컬 샘플 데이터로 보정·백테스트·몬테카를로 분석을 실행할 수 있습니다.</div>
+          </details>
+          <div id="balanceTestResult" class="balance-test-result"></div>
+          <div id="scenarioValidationResult" class="balance-test-result"></div>
+        </div>
+      </details>
+
+      <details class="section">
+        <summary>상세 지표</summary>
+        <ul class="metric-list" style="margin-top: 8px;">
+          <li class="metric-group-label">정부 재정</li>
+          <li><span>총 세수</span><strong id="taxCollectedValue">₩0</strong></li>
+          <li><span>소득세 수입</span><strong id="householdIncomeTaxValue">₩0</strong></li>
+          <li><span>법인세 수입</span><strong id="corporateTaxCollectedValue">₩0</strong></li>
+          <li><span>부가세 수입</span><strong id="vatRevenueValue">₩0</strong></li>
+          <li><span>세수 구성</span><strong id="taxCompositionValue">소득·법인·부가</strong></li>
+          <li><span>세금 체감</span><strong id="taxSentimentValue">보통</strong></li>
+          <li><span>정부 지출 실행</span><strong id="spendingActualValue">₩0</strong></li>
+          <li><span>정부 이자비용</span><strong id="governmentDebtServiceValue">₩0</strong></li>
+          <li><span>정부 부채/GDP</span><strong id="debtToGdpValue">0.0%</strong></li>
+          <li><span>재정 여력</span><strong id="fiscalSpaceValue">충분함</strong></li>
+          <li class="metric-group-label">실물경제</li>
+          <li><span>총 임금</span><strong id="wagesValue">₩0</strong></li>
+          <li><span>판매 수량</span><strong id="unitsSoldValue">0</strong></li>
+          <li><span>생산 수량</span><strong id="unitsProducedValue">0</strong></li>
+          <li class="metric-group-label">가계</li>
+          <li><span>가계 현금 불평등</span><strong id="giniValue">0.00</strong></li>
+          <li><span>가계 총부채</span><strong id="householdDebtValue">₩0</strong></li>
+          <li><span>부채상환 부담</span><strong id="debtBurdenValue">0.0%</strong></li>
+          <li><span>평균 주택담보 부담</span><strong id="mortgageBurdenValue">0.0%</strong></li>
+          <li><span>음의 자산 상태 가계</span><strong id="negativeEquityRatioValue">0.0%</strong></li>
+          <li class="metric-group-label">계층별 지표</li>
+          <li><span>소득불평등</span><strong id="incomeInequalityValue">0.00</strong></li>
+          <li><span>자산불평등</span><strong id="wealthInequalityValue">0.00</strong></li>
+          <li><span>저소득층 소비여력</span><strong id="lowIncomeConsumptionCapacityValue">보통</strong></li>
+          <li><span>중산층 주거부담</span><strong id="middleClassHousingBurdenValue">0.0%</strong></li>
+          <li><span>자산가 자산효과</span><strong id="wealthyAssetEffectValue">+0.0%</strong></li>
+          <li><span>사회적 압력</span><strong id="socialStressIndexValue">낮음</strong></li>
+          <li><span>주요 압박 계층</span><strong id="mainPressureClassValue">없음</strong></li>
+          <li><span>저소득층 스트레스</span><strong id="lowIncomeStressValue">낮음</strong></li>
+          <li><span>중산층 주담대 스트레스</span><strong id="middleMortgageStressValue">낮음</strong></li>
+          <li><span>자산가 자산 스트레스</span><strong id="wealthyAssetStressValue">낮음</strong></li>
+          <li class="metric-group-label">숨은 취약성</li>
+          <li><span>종합 취약성</span><strong id="hiddenVulnerabilityValue">낮음</strong></li>
+          <li><span>주요 취약 부문</span><strong id="dominantVulnerabilityValue">없음</strong></li>
+          <li><span>가계 취약성</span><strong id="householdVulnerabilityValue">낮음</strong></li>
+          <li><span>기업 취약성</span><strong id="firmVulnerabilityValue">낮음</strong></li>
+          <li><span>은행 취약성</span><strong id="bankVulnerabilityValue">낮음</strong></li>
+          <li><span>주택 취약성</span><strong id="housingVulnerabilityValue">낮음</strong></li>
+          <li><span>대외 취약성</span><strong id="externalVulnerabilityValue">낮음</strong></li>
+          <li class="metric-group-label">시장 평가</li>
+          <li><span>시장 성공 점수</span><strong id="marketSuccessValue">보통</strong></li>
+          <li><span>시장 실패 위험</span><strong id="marketFailureValue">낮음</strong></li>
+          <li><span>배분 효율</span><strong id="allocationQualityValue">보통</strong></li>
+          <li><span>주요 실패 유형</span><strong id="marketFailureTypeValue">없음</strong></li>
+          <li><span>주요 성공 유형</span><strong id="marketSuccessTypeValue">형성 중</strong></li>
+          <li><span>역사 시나리오</span><strong id="historicalScenarioStatusValue">비활성</strong></li>
+          <li><span>전체 조기경보</span><strong id="earlyWarningDetailValue">안정</strong></li>
+          <li class="metric-group-label">기업</li>
+          <li><span>기업 총부채</span><strong id="firmDebtValue">₩0</strong></li>
+          <li><span>평균 기업 DSCR</span><strong id="firmDscrValue">0.00</strong></li>
+          <li><span>자사주·배당 지출</span><strong id="buybackShareValue">₩0</strong></li>
+          <li><span>투자 전환율</span><strong id="investmentConversionValue">0.0%</strong></li>
+          <li><span>현금보유·부채상환</span><strong id="cashDebtAllocationValue">₩0 / ₩0</strong></li>
+          <li class="metric-group-label">산업별 지표</li>
+          <li><span>제조업 스트레스</span><strong id="manufacturingStressValue">낮음</strong></li>
+          <li><span>서비스업 수요</span><strong id="servicesDemandValue">보통</strong></li>
+          <li><span>농업 스트레스</span><strong id="agricultureStressValue">낮음</strong></li>
+          <li><span>에너지산업 스트레스</span><strong id="energySectorStressValue">낮음</strong></li>
+          <li><span>건설·부동산업 스트레스</span><strong id="constructionStressValue">낮음</strong></li>
+          <li><span>금융업 스트레스</span><strong id="financialSectorStressValue">낮음</strong></li>
+          <li><span>기술·성장기업 밸류에이션</span><strong id="technologyValuationPressureValue">낮음</strong></li>
+          <li><span>최대 스트레스 산업</span><strong id="mostStressedSectorValue">없음</strong></li>
+          <li><span>산업 구성</span><strong id="sectorCountSummaryValue">집계 중</strong></li>
+          <li><span>산업 이익·투자</span><strong id="sectorProfitInvestmentValue">₩0 / ₩0</strong></li>
+          <li class="metric-group-label">대외 부문</li>
+          <li><span>환율지수</span><strong id="exchangeRateIndexValue">100.0</strong></li>
+          <li><span>수입물가</span><strong id="importPriceIndexValue">100.0</strong></li>
+          <li><span>원자재 가격</span><strong id="commodityPriceIndexValue">100.0</strong></li>
+          <li><span>에너지 가격</span><strong id="energyPriceIndexValue">100.0</strong></li>
+          <li><span>무역수지</span><strong id="tradeBalanceValue">₩0</strong></li>
+          <li><span>해외소비자 수요</span><strong id="foreignConsumerDemandValue">100.0</strong></li>
+          <li><span>해외투자자 심리</span><strong id="foreignInvestorSentimentValue">보통</strong></li>
+          <li><span>해외채권자 수요</span><strong id="foreignBondDemandValue">보통</strong></li>
+          <li><span>해외공급자 압력</span><strong id="foreignSupplierPressureValue">낮음</strong></li>
+          <li><span>해외자본 흐름</span><strong id="foreignCapitalFlowValue">₩0</strong></li>
+          <li class="metric-group-label">정책 신뢰도</li>
+          <li><span>중앙은행 신뢰도</span><strong id="centralBankCredibilityValue">보통</strong></li>
+          <li><span>금리 경로 기대</span><strong id="expectedRatePathValue">중립</strong></li>
+          <li><span>정책 명확성</span><strong id="forwardGuidanceClarityValue">보통</strong></li>
+          <li><span>기대인플레이션 고정</span><strong id="inflationTargetCredibilityValue">보통</strong></li>
+          <li class="metric-group-label">금리 구조</li>
+          <li><span>정책금리</span><strong id="policyRateDetailValue">0.00%</strong></li>
+          <li><span>단기금리</span><strong id="shortTermRateValue">0.00%</strong></li>
+          <li><span>3개월 국채금리</span><strong id="treasuryBill3MValue">0.00%</strong></li>
+          <li><span>2년 국채금리</span><strong id="bondYield2YValue">0.00%</strong></li>
+          <li><span>5년 국채금리</span><strong id="bondYield5YValue">0.00%</strong></li>
+          <li><span>10년 국채금리</span><strong id="bondYield10YValue">0.00%</strong></li>
+          <li><span>30년 국채금리</span><strong id="bondYield30YValue">0.00%</strong></li>
+          <li><span>대출금리</span><strong id="loanRateDetailValue">0.00%</strong></li>
+          <li><span>주택담보금리</span><strong id="mortgageRateDetailValue">0.00%</strong></li>
+          <li><span>기업대출금리</span><strong id="corporateLoanRateValue">0.00%</strong></li>
+          <li><span>예금금리</span><strong id="depositRateDetailValue">0.00%</strong></li>
+          <li><span>실질정책금리</span><strong id="realPolicyRateValue">0.00%</strong></li>
+          <li><span>장단기 금리차</span><strong id="termSpreadValue">0.00%p</strong></li>
+          <li><span>장기채 가격지수</span><strong id="longBondPriceIndexValue">100.0</strong></li>
+          <li><span>국채시장 스트레스</span><strong id="bondMarketStressValue">낮음</strong></li>
+          <li><span>금리 불확실성</span><strong id="rateUncertaintyValue">낮음</strong></li>
+          <li class="metric-group-label">기업 신용</li>
+          <li><span>평균 신용등급</span><strong id="averageCreditRatingValue">BBB</strong></li>
+          <li><span>취약기업 비율</span><strong id="distressedFirmRatioValue">0.0%</strong></li>
+          <li><span>좀비기업 비율</span><strong id="zombieFirmRatioValue">0.0%</strong></li>
+          <li><span>평균 부도위험</span><strong id="averageDefaultRiskValue">0.0%</strong></li>
+          <li class="metric-group-label">자산시장</li>
+          <li><span>주가지수</span><strong id="stockIndexValue">2,500pt</strong></li>
+          <li><span>주거용 부동산</span><strong id="housingIndexValue">100.0</strong></li>
+          <li><span>상업용 부동산</span><strong id="commercialIndexValue">100.0</strong></li>
+          <li><span>월간 주식 수익률</span><strong id="stockReturnValue">+0.0%</strong></li>
+          <li><span>주식 변동성</span><strong id="stockVolatilityValue">보통</strong></li>
+          <li><span>밸류에이션 부담</span><strong id="stockValuationPressureValue">낮음</strong></li>
+          <li><span>주식 기초가치 대비 괴리</span><strong id="stockMispricingValue">0.0%</strong></li>
+          <li><span>부동산 기초가치 대비 괴리</span><strong id="housingMispricingValue">0.0%</strong></li>
+          <li><span>투기 수요 압력</span><strong id="speculativeDemandValue">낮음</strong></li>
+          <li><span>시장 위험심리</span><strong id="stockRiskSentimentValue">안정</strong></li>
+          <li><span>주거용 수익률</span><strong id="housingReturnValue">0.00%</strong></li>
+          <li><span>자산효과</span><strong id="wealthEffectValue">0.0%</strong></li>
+          <li><span>주택구입부담</span><strong id="housingAffordabilityValue">0.00</strong></li>
+          <li><span>자산 버블 위험</span><strong id="assetBubbleRiskValue">낮음</strong></li>
+          <li class="metric-group-label">부동산 구조</li>
+          <li><span>토지가격지수</span><strong id="landIndexValue">100.0</strong></li>
+          <li><span>임대료지수</span><strong id="rentIndexValue">100.0</strong></li>
+          <li><span>상업용 공실률</span><strong id="commercialVacancyValue">8.0%</strong></li>
+          <li><span>담보가치지수</span><strong id="collateralValueIndexValue">100.0</strong></li>
+          <li><span>부동산 스트레스</span><strong id="realEstateStressValue">낮음</strong></li>
+          <li class="metric-group-label">기업 주식</li>
+          <li><span>평균 기업 주가</span><strong id="averageFirmStockPriceValue">₩100</strong></li>
+          <li><span>최고/최저 기업 주가</span><strong id="firmStockRangeValue">₩150 / ₩50</strong></li>
+          <li><span>기업 주가 변동성</span><strong id="firmStockVolatilityValue">0.0%</strong></li>
+          <li><span>정보 불투명 기업</span><strong id="opaqueFirmRatioValue">0.0%</strong></li>
+          <li><span>주가 급락 기업</span><strong id="stockCrashFirmCountValue">0개</strong></li>
+          <li class="metric-group-label">금융시장</li>
+          <li><span>금융여건지수</span><strong id="financialConditionIndexValue">0.0</strong></li>
+          <li><span>국채금리</span><strong id="bondYieldValue">0.00%</strong></li>
+          <li><span>국채가격지수</span><strong id="bondPriceIndexValue">100.0</strong></li>
+          <li><span>신용스프레드</span><strong id="creditSpreadValue">0.00%p</strong></li>
+          <li><span>은행건전성지수</span><strong id="bankHealthValue">100.0</strong></li>
+          <li><span>대출태도</span><strong id="bankLendingStandardValue">정상</strong></li>
+          <li><span>신용공급지수</span><strong id="creditSupplyValue">100.0</strong></li>
+          <li><span>예금자 신뢰</span><strong id="depositorConfidenceValue">보통</strong></li>
+          <li><span>은행 간 신뢰</span><strong id="interbankTrustValue">보통</strong></li>
+          <li><span>은행 자금조달 압력</span><strong id="bankFundingPressureValue">낮음</strong></li>
+          <li><span>여신심사 보수성</span><strong id="creditOfficerCautionValue">보통</strong></li>
+          <li><span>대출수요</span><strong id="loanDemandIndexValue">100.0</strong></li>
+          <li><span>신용 사이클</span><strong id="creditCyclePhaseValue">정상</strong></li>
+          <li><span>예금금리</span><strong id="depositRateValue">0.00%</strong></li>
+          <li><span>대출금리</span><strong id="loanRateValue">0.00%</strong></li>
+          <li><span>부실대출비율</span><strong id="nplRatioValue">0.0%</strong></li>
+          <li><span>금 가격지수</span><strong id="goldIndexValue">100.0</strong></li>
+          <li><span>은 가격지수</span><strong id="silverIndexValue">100.0</strong></li>
+          <li><span>안전자산 선호</span><strong id="safeHavenDemandValue">0.0%</strong></li>
+          <li><span>은행위기 위험</span><strong id="bankingCrisisRiskValue">낮음</strong></li>
+        </ul>
+      </details>
+
+      <details class="section">
+        <summary>정책 영향</summary>
+        <div class="impact-grid" style="margin-top: 8px;">
+          <div class="impact-card"><span>소비 변화</span><strong id="consumptionDeltaValue">0</strong></div>
+          <div class="impact-card"><span>투자 변화</span><strong id="investmentDeltaValue">0</strong></div>
+          <div class="impact-card"><span>실업 변화</span><strong id="unemploymentDeltaValue">0.00%p</strong></div>
+          <div class="impact-card"><span>가격 변화</span><strong id="priceDeltaValue">0.00</strong></div>
+        </div>
+      </details>
+
+      <details class="section">
+        <summary>최근 이벤트</summary>
+        <ul id="eventLog" class="event-log"></ul>
+      </details>
+
+      <details class="section">
+        <summary>오류 로그</summary>
+        <button id="developerValidationBtn" class="btn secondary full" type="button" style="margin: 8px 0;">방향성 검증 실행</button>
+        <div id="developerValidationResult" class="balance-test-result">검증을 실행하면 정책 변화의 기본 방향성이 표시됩니다.</div>
+        <ul id="debugErrorLog" class="event-log compact-log">
+          <li>오류 기록이 없습니다.</li>
+        </ul>
+      </details>
+
+      <details class="section">
+        <summary>학습 가이드</summary>
+        <div class="explain">
+          <p><strong>소비자</strong>: 임금과 현금으로 구매합니다.</p>
+          <p><strong>생산자</strong>: 수요, 재고, 이윤을 보고 고용과 가격을 바꿉니다.</p>
+          <p><strong>정부</strong>: 세금을 걷고 지출로 수요를 보강합니다.</p>
+          <p><strong>금리</strong>: 소비와 투자를 몇 개월에 걸쳐 낮춥니다.</p>
+        </div>
+      </details>
+    </aside>
+  </div>
+
+  <div id="toastStack" class="toast-stack"></div>
+
+  <div id="endOverlay" class="end-overlay">
+    <div class="end-modal">
+      <h2 id="endTitle">결과</h2>
+      <p id="endReason">정책 운영 결과가 여기에 표시됩니다.</p>
+      <div id="endSummaryGrid" class="summary-grid"></div>
+      <div class="modal-actions">
+        <button id="endRestartBtn" class="btn">같은 시나리오 재시작</button>
+        <button id="endSandboxBtn" class="btn secondary">기본 실험으로 돌아가기</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
+

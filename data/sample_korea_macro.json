@@ -1,0 +1,92 @@
+{
+  "country": "korea",
+  "sourceNote": "교육용 샘플 데이터입니다. 실제 통계 원자료가 아니라 방향성 검증용 축약 시계열입니다.",
+  "gdp": [
+    { "date": "2019-01", "value": 100, "source": "sample", "seriesCode": "KOR_GDP" },
+    { "date": "2020-01", "value": 99.2, "source": "sample", "seriesCode": "KOR_GDP" },
+    { "date": "2021-01", "value": 103.5, "source": "sample", "seriesCode": "KOR_GDP" },
+    { "date": "2022-01", "value": 106.1, "source": "sample", "seriesCode": "KOR_GDP" },
+    { "date": "2023-01", "value": 107.7, "source": "sample", "seriesCode": "KOR_GDP" },
+    { "date": "2024-01", "value": 110.0, "source": "sample", "seriesCode": "KOR_GDP" }
+  ],
+  "cpi": [
+    { "date": "2019-01", "value": 100, "source": "sample", "seriesCode": "KOR_CPI" },
+    { "date": "2020-01", "value": 100.5, "source": "sample", "seriesCode": "KOR_CPI" },
+    { "date": "2021-01", "value": 103.0, "source": "sample", "seriesCode": "KOR_CPI" },
+    { "date": "2022-01", "value": 108.4, "source": "sample", "seriesCode": "KOR_CPI" },
+    { "date": "2023-01", "value": 112.2, "source": "sample", "seriesCode": "KOR_CPI" },
+    { "date": "2024-01", "value": 115.0, "source": "sample", "seriesCode": "KOR_CPI" }
+  ],
+  "unemployment": [
+    { "date": "2019-01", "value": 3.8, "source": "sample", "seriesCode": "KOR_UNEMP" },
+    { "date": "2020-01", "value": 4.1, "source": "sample", "seriesCode": "KOR_UNEMP" },
+    { "date": "2021-01", "value": 3.7, "source": "sample", "seriesCode": "KOR_UNEMP" },
+    { "date": "2022-01", "value": 3.1, "source": "sample", "seriesCode": "KOR_UNEMP" },
+    { "date": "2023-01", "value": 2.9, "source": "sample", "seriesCode": "KOR_UNEMP" },
+    { "date": "2024-01", "value": 2.8, "source": "sample", "seriesCode": "KOR_UNEMP" }
+  ],
+  "policyRate": [
+    { "date": "2019-01", "value": 1.75, "source": "sample", "seriesCode": "KOR_RATE" },
+    { "date": "2020-01", "value": 0.5, "source": "sample", "seriesCode": "KOR_RATE" },
+    { "date": "2021-01", "value": 1.0, "source": "sample", "seriesCode": "KOR_RATE" },
+    { "date": "2022-01", "value": 3.25, "source": "sample", "seriesCode": "KOR_RATE" },
+    { "date": "2023-01", "value": 3.5, "source": "sample", "seriesCode": "KOR_RATE" },
+    { "date": "2024-01", "value": 3.5, "source": "sample", "seriesCode": "KOR_RATE" }
+  ],
+  "governmentDebt": [
+    { "date": "2019-01", "value": 37, "source": "sample", "seriesCode": "KOR_DEBT" },
+    { "date": "2020-01", "value": 42, "source": "sample", "seriesCode": "KOR_DEBT" },
+    { "date": "2021-01", "value": 46, "source": "sample", "seriesCode": "KOR_DEBT" },
+    { "date": "2022-01", "value": 49, "source": "sample", "seriesCode": "KOR_DEBT" },
+    { "date": "2023-01", "value": 51, "source": "sample", "seriesCode": "KOR_DEBT" },
+    { "date": "2024-01", "value": 52, "source": "sample", "seriesCode": "KOR_DEBT" }
+  ],
+  "householdDebt": [
+    { "date": "2019-01", "value": 92, "source": "sample", "seriesCode": "KOR_HHDEBT" },
+    { "date": "2020-01", "value": 97, "source": "sample", "seriesCode": "KOR_HHDEBT" },
+    { "date": "2021-01", "value": 104, "source": "sample", "seriesCode": "KOR_HHDEBT" },
+    { "date": "2022-01", "value": 106, "source": "sample", "seriesCode": "KOR_HHDEBT" },
+    { "date": "2023-01", "value": 104, "source": "sample", "seriesCode": "KOR_HHDEBT" },
+    { "date": "2024-01", "value": 103, "source": "sample", "seriesCode": "KOR_HHDEBT" }
+  ],
+  "housePriceIndex": [
+    { "date": "2019-01", "value": 100, "source": "sample", "seriesCode": "KOR_HPI" },
+    { "date": "2020-01", "value": 106, "source": "sample", "seriesCode": "KOR_HPI" },
+    { "date": "2021-01", "value": 116, "source": "sample", "seriesCode": "KOR_HPI" },
+    { "date": "2022-01", "value": 113, "source": "sample", "seriesCode": "KOR_HPI" },
+    { "date": "2023-01", "value": 108, "source": "sample", "seriesCode": "KOR_HPI" },
+    { "date": "2024-01", "value": 110, "source": "sample", "seriesCode": "KOR_HPI" }
+  ],
+  "stockIndex": [
+    { "date": "2019-01", "value": 100, "source": "sample", "seriesCode": "KOR_STOCK" },
+    { "date": "2020-01", "value": 112, "source": "sample", "seriesCode": "KOR_STOCK" },
+    { "date": "2021-01", "value": 120, "source": "sample", "seriesCode": "KOR_STOCK" },
+    { "date": "2022-01", "value": 98, "source": "sample", "seriesCode": "KOR_STOCK" },
+    { "date": "2023-01", "value": 111, "source": "sample", "seriesCode": "KOR_STOCK" },
+    { "date": "2024-01", "value": 119, "source": "sample", "seriesCode": "KOR_STOCK" }
+  ],
+  "exchangeRate": [
+    { "date": "2019-01", "value": 100, "source": "sample", "seriesCode": "KOR_FX" },
+    { "date": "2020-01", "value": 103, "source": "sample", "seriesCode": "KOR_FX" },
+    { "date": "2021-01", "value": 101, "source": "sample", "seriesCode": "KOR_FX" },
+    { "date": "2022-01", "value": 112, "source": "sample", "seriesCode": "KOR_FX" },
+    { "date": "2023-01", "value": 116, "source": "sample", "seriesCode": "KOR_FX" },
+    { "date": "2024-01", "value": 113, "source": "sample", "seriesCode": "KOR_FX" }
+  ],
+  "exports": [
+    { "date": "2019-01", "value": 100, "source": "sample", "seriesCode": "KOR_EXP" },
+    { "date": "2020-01", "value": 96, "source": "sample", "seriesCode": "KOR_EXP" },
+    { "date": "2021-01", "value": 111, "source": "sample", "seriesCode": "KOR_EXP" },
+    { "date": "2022-01", "value": 118, "source": "sample", "seriesCode": "KOR_EXP" },
+    { "date": "2023-01", "value": 112, "source": "sample", "seriesCode": "KOR_EXP" },
+    { "date": "2024-01", "value": 117, "source": "sample", "seriesCode": "KOR_EXP" }
+  ],
+  "imports": [
+    { "date": "2019-01", "value": 100, "source": "sample", "seriesCode": "KOR_IMP" },
+    { "date": "2020-01", "value": 93, "source": "sample", "seriesCode": "KOR_IMP" },
+    { "date": "2021-01", "value": 108, "source": "sample", "seriesCode": "KOR_IMP" },
+    { "date": "2022-01", "value": 123, "source": "sample", "seriesCode": "KOR_IMP" },
+    { "date": "2023-01", "value": 116, "source": "sample", "seriesCode": "KOR_IMP" },
+    { "date": "2024-01", "value": 118, "source": "sample", "seriesCode": "KOR_IMP" }
+  ]
+}
