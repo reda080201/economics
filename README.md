@@ -36,7 +36,7 @@ http://127.0.0.1:8788/index.html
 - 심리/정보: 소비심리, 기업심리, 시장 위험심리, 정보격차, 행동경제 편향
 - 시나리오: 안정 성장, 고금리 긴축, 원자재 충격, 금융불안, 역사형 시나리오
 - 분석 도구: 정책 비교, 원인 분해, 조기경보등, 120개월 빠른 테스트
-- 데이터 보정: 로컬 샘플 데이터 기반 캘리브레이션, 백테스트, 몬테카를로 불확실성 분석
+- 데이터 보정: recursive response function 기반 캘리브레이션, 변수별 적합도 진단, 백테스트, 몬테카를로 불확실성 분석
 - SFC 보조 레이어: 부문별 balance sheet와 flow ledger, 회계 일관성 검증
 
 ## 모델 구조
@@ -50,7 +50,7 @@ src/
     config.js              # 공통 상수와 정책 전달 메타데이터
     stateFactory.js        # 초기 앱 상태 생성
     mathUtils.js           # 안전 수치, clamp, 평균, Gini 등 공통 유틸
-    calibration.js         # 샘플 데이터 기반 파라미터 보정
+    calibration.js         # 샘플 데이터 기반 파라미터 보정과 변수별 loss 진단
     backtest.js            # recursive simulated path 기반 과거 구간 검증
   economy/
     sectorProfiles.js      # 산업별 민감도와 전략 helper
@@ -70,9 +70,9 @@ data/
 
 ## 백테스트와 데이터 보정
 
-백테스트와 캘리브레이션은 실제값을 그대로 복사하지 않고, 첫 관측값에서 시작해 공통 response function과 과거 외생 변수로 recursive simulated path를 만든 뒤 실제 데이터와 비교합니다.
+백테스트와 캘리브레이션은 실제값을 그대로 복사하지 않고, 첫 관측값에서 시작해 공통 response function과 과거 외생 변수로 recursive simulated path를 만든 뒤 실제 데이터와 비교합니다. 캘리브레이션 결과는 기본 loss, 보정 후 loss, 개선률, 선택된 파라미터 배율, GDP/물가/실업률별 적합도를 함께 표시합니다.
 
-현재 데이터 소스는 로컬 샘플 JSON입니다. FRED, ECOS, OECD adapter는 향후 API 연동을 위한 stub 상태입니다.
+현재 데이터 소스는 로컬 샘플 JSON입니다. FRED, ECOS, OECD adapter는 공식 데이터 연동을 위한 stub 상태이며, 아직 API 키 처리나 원격 호출을 수행하지 않습니다.
 
 ## 한계
 

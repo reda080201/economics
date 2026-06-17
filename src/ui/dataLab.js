@@ -14,15 +14,21 @@ export async function runDataCalibrationMode(context) {
       ...(state.modelReliability || helpers.createInitialModelReliability()),
       level: result.loss < 0.8 ? "높음" : result.loss < 1.8 ? "중간" : "낮음",
       calibrationLoss: result.loss,
-      bestVariable: "물가·금리 방향성",
-      weakestVariable: "실업률 급변 구간",
+      bestVariable: result.bestVariable || "확인 필요",
+      weakestVariable: result.weakestVariable || "확인 필요",
       lastDataset: dataset.label || dataset.country || "샘플"
     };
+    const scaleSummary = formatSelectedScales(result.selectedParameterScales, helpers);
+    const breakdownSummary = formatVariableBreakdown(result.variableBreakdown, helpers);
     helpers.updateSfcAccountingLayer();
     helpers.setHtmlIfChanged(els.dataLabResult, `
       <strong>데이터 보정 완료</strong><br>
       데이터: ${helpers.escapeHtml(state.modelReliability.lastDataset)}<br>
-      손실값: ${helpers.round(result.loss, 3).toFixed(3)} / 후보 ${result.candidatesTested}개<br>
+      기본 손실: ${formatNumber(result.baselineLoss, helpers)} / 보정 후 손실: ${formatNumber(result.loss, helpers)}<br>
+      개선률: ${helpers.percent((result.improvementRate || 0) * 100, 1)} / 후보 ${result.candidatesTested}개<br>
+      가장 잘 맞는 변수: ${helpers.escapeHtml(result.bestVariable || "확인 필요")} / 가장 안 맞는 변수: ${helpers.escapeHtml(result.weakestVariable || "확인 필요")}<br>
+      선택 배율: ${scaleSummary}<br>
+      변수별 적합도: ${breakdownSummary}<br>
       신뢰도: ${helpers.escapeHtml(state.modelReliability.level)}<br>
       대상 지표: ${helpers.escapeHtml((result.targetSeries || []).join(", "))}<br>
       방식: ${helpers.escapeHtml(result.method || "recursive_model_path_search")}<br>
@@ -108,4 +114,27 @@ async function loadSelectedCalibrationDataset(context) {
   const dataset = await services.loadCalibrationDataset(country);
   state.calibrationDataset = dataset;
   return dataset;
+}
+
+function formatNumber(value, helpers) {
+  return Number.isFinite(Number(value)) ? helpers.round(Number(value), 3).toFixed(3) : "확인 필요";
+}
+
+function formatSelectedScales(scales = {}, helpers) {
+  const labels = {
+    consumptionIncome: "소비소득",
+    investmentDemand: "투자수요",
+    inflationDemandGap: "물가수요갭",
+    unemploymentOutputGap: "실업산출갭"
+  };
+  return Object.entries(labels)
+    .map(([key, label]) => `${helpers.escapeHtml(label)} x${formatNumber(scales[key] ?? 1, helpers)}`)
+    .join(" · ");
+}
+
+function formatVariableBreakdown(breakdown = [], helpers) {
+  if (!Array.isArray(breakdown) || !breakdown.length) return "확인 필요";
+  return breakdown
+    .map((entry) => `${helpers.escapeHtml(entry.label || entry.key)} RMSE ${formatNumber(entry.rmse, helpers)}`)
+    .join(" · ");
 }
