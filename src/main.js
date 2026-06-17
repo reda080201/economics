@@ -1,172 +1,83 @@
 import { evaluateDirectionalValidation, renderValidationReport } from "./core/validation.js";
-import { createSectorState, syncSectorStateFromSimulation } from "./core/sectorState.js";
-import { closeAccountingPeriod, createFlowLedger, recordEconomicFlow } from "./core/flowLedger.js";
+import {
+  BOND_PRICE_RETURN_LIMIT,
+  CALIBRATION,
+  FIRM_DEBT_SERVICE_SCALE,
+  GOLD_RETURN_LIMIT,
+  GOVERNMENT_DEBT_SERVICE_SCALE,
+  HOUSEHOLD_DEBT_SERVICE_SCALE,
+  HOUSING_RETURN_LIMIT,
+  MAX_FLOWS,
+  MAX_HISTORY,
+  MAX_PRICE_CHANGE_PER_TICK,
+  MAX_WAGE_CHANGE_PER_TICK,
+  NEUTRAL_INTEREST_RATE,
+  POLICY_META,
+  SILVER_RETURN_LIMIT,
+  STOCK_RETURN_LIMIT,
+  TARGET_INFLATION,
+  TARGET_UNEMPLOYMENT,
+  TICKS_PER_MONTH
+} from "./core/config.js";
+import { createSectorState } from "./core/sectorState.js";
+import { createFlowLedger } from "./core/flowLedger.js";
 import { cloneModelParameters, defaultModelParameters } from "./core/modelParameters.js";
+import {
+  applyInertia,
+  average,
+  calculateGini,
+  clamp,
+  computeNonlinearStress,
+  escapeHtml,
+  lerp,
+  quadraticPoint,
+  rand,
+  round,
+  roundedRect,
+  safeNumber,
+  safeValue,
+  shuffle,
+  smoothValue,
+  sum,
+  unique
+} from "./core/mathUtils.js";
+import { createInitialAppState } from "./core/stateFactory.js";
+import {
+  captureCoreStateSignature as captureCoreStateSignatureRuntime,
+  captureSimulationSnapshot as captureSimulationSnapshotRuntime,
+  compareCoreStateSignature as compareCoreStateSignatureRuntime,
+  restoreSimulationSnapshot as restoreSimulationSnapshotRuntime
+} from "./core/simulationRuntime.js";
 import { calibrateParameters } from "./core/calibration.js";
 import { runBacktest } from "./core/backtest.js";
 import { runMonteCarloScenario } from "./core/monteCarlo.js";
 import { loadCalibrationDataset } from "./data/calibrationDataset.js";
+import {
+  recordLedgerFlowFromUiFlow,
+  updateSfcAccountingLayer as updateSfcAccountingLayerAdapter
+} from "./economy/accountingAdapter.js";
+import {
+  firmStrategyLabel,
+  getSectorBehaviorMultiplier,
+  getSectorProfile,
+  weightedPick
+} from "./economy/sectorProfiles.js";
 import { scenarioSelectGroups } from "./scenarios/presets.js";
 import { hydrateScenarioSelect } from "./ui/controls.js";
+import {
+  runBacktestMode as runBacktestModePanel,
+  runDataCalibrationMode as runDataCalibrationModePanel,
+  runMonteCarloMode as runMonteCarloModePanel,
+  updateModelReliabilityPanel as updateModelReliabilityPanelView
+} from "./ui/dataLab.js";
 
 "use strict";
 
     // ===== 설정과 전역 상태 =====
     // 모든 에이전트와 정책 변수는 이 state 객체에 보관한다.
     // 백엔드 없이 브라우저 메모리 안에서만 시뮬레이션이 진행된다.
-    const MAX_HISTORY = 160;
-    const MAX_FLOWS = 20;
-    const TARGET_INFLATION = 2.0;
-    const TARGET_UNEMPLOYMENT = 5.6;
-    const NEUTRAL_INTEREST_RATE = 3.0;
-    const TICKS_PER_MONTH = 8;
-    const MAX_PRICE_CHANGE_PER_TICK = 0.03;
-    const MAX_WAGE_CHANGE_PER_TICK = 0.015;
-    const HOUSEHOLD_DEBT_SERVICE_SCALE = 0.030;
-    const FIRM_DEBT_SERVICE_SCALE = 0.026;
-    const GOVERNMENT_DEBT_SERVICE_SCALE = 0.010;
-    const STOCK_RETURN_LIMIT = 0.08 / TICKS_PER_MONTH;
-    const HOUSING_RETURN_LIMIT = 0.04 / TICKS_PER_MONTH;
-    const BOND_PRICE_RETURN_LIMIT = 0.05 / TICKS_PER_MONTH;
-    const GOLD_RETURN_LIMIT = 0.06 / TICKS_PER_MONTH;
-    const SILVER_RETURN_LIMIT = 0.10 / TICKS_PER_MONTH;
-    const CALIBRATION = {
-      sentimentWeight: 0.90,
-      wealthEffectWeight: 0.72,
-      creditChannelWeight: 0.68,
-      housingChannelWeight: 0.82,
-      stockChannelWeight: 0.70,
-      fiscalMultiplierWeight: 0.92,
-      externalShockWeight: 0.78,
-      bankStressWeight: 0.58,
-      behavioralBiasWeight: 0.72,
-      priceStickiness: 0.88,
-      wageStickiness: 0.90,
-      hiringFriction: 1.08,
-      investmentFriction: 1.12
-    };
-    const POLICY_META = {
-      interest: { target: "interestTarget", delayed: "interestDelayedTarget", effective: "interestEffective", delayMin: 5, delayMax: 10, speed: 0.025, tolerance: 0.00005 },
-      tax: { target: "taxTarget", delayed: "taxDelayedTarget", effective: "taxEffective", delayMin: 4, delayMax: 8, speed: 0.025, tolerance: 0.00005 },
-      corporateTax: { target: "corporateTaxTarget", delayed: "corporateTaxDelayedTarget", effective: "corporateTaxEffective", delayMin: 4, delayMax: 8, speed: 0.025, tolerance: 0.00005 },
-      vat: { target: "vatTarget", delayed: "vatDelayedTarget", effective: "vatEffective", delayMin: 3, delayMax: 7, speed: 0.030, tolerance: 0.00005 },
-      spending: { target: "spendingTarget", delayed: "spendingDelayedTarget", effective: "spendingEffective", delayMin: 2, delayMax: 5, speed: 0.025, tolerance: 0.5 },
-      wage: { target: "wageTarget", delayed: "wageDelayedTarget", effective: "wageEffective", delayMin: 8, delayMax: 16, speed: 0.025, tolerance: 0.02 }
-    };
-
     const els = {};
-
-    const state = {
-      running: false,
-      tick: 0,
-      consumers: [],
-      producers: [],
-      government: null,
-      assetMarket: null,
-      realEstate: null,
-      financialMarket: null,
-      creditCycle: null,
-      rates: null,
-      marketOutcome: null,
-      causalDecomposition: null,
-      earlyWarning: null,
-      externalActors: null,
-      classAnalysis: null,
-      vulnerabilities: null,
-      macroFinancial: null,
-      sentiment: null,
-      information: null,
-      behavior: null,
-      external: null,
-      policyCredibility: null,
-      perceived: null,
-      historicalScenario: null,
-      sectorState: null,
-      flowLedger: null,
-      modelParameters: cloneModelParameters(defaultModelParameters),
-      modelReliability: null,
-      calibrationDataset: null,
-      metrics: {},
-      history: [],
-      flows: [],
-      events: [],
-      markers: [],
-      selected: null,
-      hovered: null,
-      charts: {},
-      config: {},
-      policy: null,
-      policyQueue: null,
-      previousAveragePrice: 10,
-      previousAverageWage: 12,
-      smoothedInflation: 0,
-      smoothedWageGrowth: 0,
-      priceDrivers: {
-        demandPull: 0,
-        costPush: 0,
-        shortage: 0,
-        expectations: 0
-      },
-      debug: {
-        lastSuccessfulTickTime: 0,
-        errors: [],
-        suppressVisualUpdates: false,
-        lastErrorSignature: "",
-        lastErrorAt: 0
-      },
-      lastFrameTime: 0,
-      lastRenderAt: 0,
-      accumulator: 0,
-      positions: {
-        consumers: [],
-        producers: [],
-        government: { x: 0, y: 0, r: 24 }
-      },
-      shock: {
-        label: "충격 없음",
-        ticksRemaining: 0,
-        demandMultiplier: 1,
-        productivityMultiplier: 1,
-        pricePressure: 0
-      },
-      game: {
-        mode: "sandbox",
-        modeName: "기본 실험",
-        status: "active",
-        targetTicks: null,
-        startTick: 0,
-        scenarioName: "기본 실험",
-        score: 0,
-        lastScore: 0,
-        scoreTrend: 0,
-        bestScore: 0,
-        failReason: "",
-        winReason: "",
-        counters: {},
-        objectives: [],
-        activeEvent: null,
-        nextEventTick: 18,
-        wasRunningBeforeEvent: false,
-        eventsSurvived: 0,
-        policyToastAt: 0,
-        summary: {}
-      },
-      ui: {
-        detailMode: "summary",
-        activeDetailGroup: "overview",
-        largeEconomyMode: false,
-        lastInspectorUpdateTick: -1,
-        lastChartUpdateTick: -1,
-        lastCanvasRenderTick: -1,
-        lastHeavyInspectorTick: -1,
-        compactResults: true,
-        chartsAvailable: true,
-        canvasPositionCacheKey: "",
-        kpiAnimationFrameIds: {},
-        lazyResultCache: {},
-        openDetailGroups: {}
-      }
-    };
+    const state = createInitialAppState();
 
     // ===== 초기화 =====
     // DOM이 준비되면 차트, 이벤트, 에이전트 상태를 한 번에 연결한다.
@@ -241,91 +152,6 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
       ].forEach((id) => {
         els[id] = document.getElementById(id);
       });
-    }
-
-    function getSectorProfile(sector) {
-      const profiles = {
-        manufacturing: { exportExposure: 0.42, importCostExposure: 0.36, energyCostExposure: 0.30, wageCostShare: 0.34, interestSensitivity: 0.88, demandSensitivity: 1.05, assetSensitivity: 0.55, creditSensitivity: 0.92, productivityTrend: 0.004 },
-        services: { exportExposure: 0.08, importCostExposure: 0.10, energyCostExposure: 0.12, wageCostShare: 0.58, interestSensitivity: 0.65, demandSensitivity: 1.18, assetSensitivity: 0.38, creditSensitivity: 0.62, productivityTrend: 0.002 },
-        agriculture: { exportExposure: 0.12, importCostExposure: 0.24, energyCostExposure: 0.38, wageCostShare: 0.30, interestSensitivity: 0.52, demandSensitivity: 0.72, assetSensitivity: 0.25, creditSensitivity: 0.62, productivityTrend: 0.001 },
-        energy: { exportExposure: 0.20, importCostExposure: 0.18, energyCostExposure: 0.12, wageCostShare: 0.24, interestSensitivity: 0.82, demandSensitivity: 0.88, assetSensitivity: 0.70, creditSensitivity: 0.85, productivityTrend: 0.002 },
-        construction: { exportExposure: 0.02, importCostExposure: 0.22, energyCostExposure: 0.24, wageCostShare: 0.42, interestSensitivity: 1.38, demandSensitivity: 1.25, assetSensitivity: 1.20, creditSensitivity: 1.32, productivityTrend: 0.001 },
-        financial: { exportExposure: 0.04, importCostExposure: 0.04, energyCostExposure: 0.03, wageCostShare: 0.38, interestSensitivity: 1.05, demandSensitivity: 0.78, assetSensitivity: 1.05, creditSensitivity: 1.42, productivityTrend: 0.002 },
-        technology: { exportExposure: 0.24, importCostExposure: 0.18, energyCostExposure: 0.08, wageCostShare: 0.46, interestSensitivity: 1.55, demandSensitivity: 1.12, assetSensitivity: 1.45, creditSensitivity: 1.08, productivityTrend: 0.009 },
-        staples: { exportExposure: 0.10, importCostExposure: 0.20, energyCostExposure: 0.18, wageCostShare: 0.32, interestSensitivity: 0.48, demandSensitivity: 0.62, assetSensitivity: 0.30, creditSensitivity: 0.45, productivityTrend: 0.002 }
-      };
-      return profiles[sector] || profiles.services;
-    }
-
-    function getSectorBehaviorMultiplier(producer) {
-      const sector = producer?.sector || "services";
-      const m = state.metrics || {};
-      const rates = state.rates || {};
-      const creditTightness = clamp((100 - safeNumber(m.creditSupplyIndex, 100)) / 100, 0, 1);
-      const demandSignal = clamp(safeNumber(m.salesPressure, 1), 0.45, 1.65);
-      if (sector === "manufacturing") {
-        return clamp(
-          1
-            + Math.max(0, safeNumber(m.exportDemand, 100) - 100) * 0.0015
-            - safeNumber(m.importInflationPressure, 0) * 0.040
-            - safeNumber(m.commodityCostPressure, 0) * safeNumber(producer.energyCostExposure, 0.2) * 0.050,
-          0.68,
-          1.10
-        );
-      }
-      if (sector === "services") {
-        return clamp(0.82 + demandSignal * 0.20 + safeNumber(m.consumerSentiment, 0.8) * 0.10 - Math.max(0, safeNumber(m.wageGrowth, 0) - 3) * 0.012, 0.72, 1.08);
-      }
-      if (sector === "agriculture") {
-        return clamp(0.98 - safeNumber(m.commodityCostPressure, 0) * 0.035 - Math.max(0, safeNumber(m.energyPriceIndex, 100) - 100) * 0.0013 - safeNumber(m.lowIncomeStress, 0) * 0.08 + Math.max(0, safeNumber(m.inflation, 0) - TARGET_INFLATION) * 0.010, 0.66, 1.08);
-      }
-      if (sector === "energy") {
-        return clamp(0.90 + Math.max(0, safeNumber(m.energyPriceIndex, 100) - 100) * 0.0024 + Math.max(0, safeNumber(m.globalDemand, 100) - 100) * 0.0012 - creditTightness * 0.14 - Math.max(0, safeNumber(m.importInflationPressure, 0)) * 0.020, 0.64, 1.14);
-      }
-      if (sector === "construction") {
-        return clamp(
-          1.05
-            - Math.max(0, safeNumber(m.mortgageRate, 0) - 5.0) * 0.045
-            - Math.max(0, safeNumber(m.housingAffordability, 1) - 1.35) * 0.12
-            - creditTightness * 0.18
-            + Math.max(0, safeNumber(m.residentialReturn, 0)) * 0.006,
-          0.55,
-          1.08
-        );
-      }
-      if (sector === "financial") {
-        const marginSupport = clamp(safeNumber(m.bankNetInterestMargin, 2) / 4, 0, 0.28);
-        return clamp(0.90 + marginSupport - safeNumber(m.bankStress, 0) * 0.32 - creditTightness * 0.16 - safeNumber(m.nonPerformingLoanRatio, 0) * 0.018, 0.60, 1.10);
-      }
-      if (sector === "technology") {
-        return clamp(
-          1.05
-            - Math.max(0, safeNumber(m.bondYield10Y, 0) - NEUTRAL_INTEREST_RATE) * 0.050
-            - Math.max(0, safeNumber(rates.realPolicyRate, 0) * 100 - 1.2) * 0.035
-            + Math.max(0, safeNumber(m.stockRiskSentiment, 0.65) - 0.58) * 0.18
-            - safeNumber(m.stockVulnerability, 0) * 0.10,
-          0.58,
-          1.12
-        );
-      }
-      if (sector === "staples") {
-        return clamp(0.94 + Math.min(1.15, demandSignal) * 0.06 - safeNumber(m.lowIncomeStress, 0) * 0.07, 0.82, 1.05);
-      }
-      return 1;
-    }
-
-    function weightedPick(entries) {
-      const total = entries.reduce((acc, [, weight]) => acc + weight, 0);
-      let roll = Math.random() * Math.max(0.0001, total);
-      for (const [value, weight] of entries) {
-        roll -= weight;
-        if (roll <= 0) return value;
-      }
-      return entries[entries.length - 1][0];
-    }
-
-    function firmStrategyLabel(strategy) {
-      return strategy || "균형형";
     }
 
     function setupEvents() {
@@ -2099,17 +1925,7 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
     }
 
     function updateSfcAccountingLayer() {
-      if (!state.sectorState) state.sectorState = createSectorState();
-      if (!state.flowLedger) state.flowLedger = createFlowLedger();
-      syncSectorStateFromSimulation(state.sectorState, state);
-      const validation = closeAccountingPeriod(state.flowLedger, state);
-      state.metrics.accountingStatus = validation.status;
-      state.metrics.accountingSummary = validation.summary;
-      if (state.modelReliability) {
-        state.metrics.calibrationLoss = state.modelReliability.calibrationLoss;
-        state.metrics.backtestDirectionHitRate = state.modelReliability.backtestDirectionHitRate;
-        state.metrics.modelReliabilityLevel = state.modelReliability.level;
-      }
+      return updateSfcAccountingLayerAdapter(state);
     }
 
     function isLargeEconomyMode() {
@@ -3072,7 +2888,7 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
             : producer.sector === "technology"
               ? clamp(1 - Math.max(0, longYield * 100 - NEUTRAL_INTEREST_RATE) * 0.040, 0.70, 1.05)
               : 1;
-        const sectorBehaviorMultiplier = getSectorBehaviorMultiplier(producer);
+        const sectorBehaviorMultiplier = getSectorBehaviorMultiplier(producer, state);
         const creditCycle = state.creditCycle || createInitialCreditCycle();
         const financial = state.financialMarket || createInitialFinancialMarket(state.config);
         const creditPsychMultiplier = clamp(
@@ -9983,106 +9799,45 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
       state.sentiment.businessConfidence = clamp(safeNumber(state.sentiment.businessConfidence, 0.7) - 0.04, 0, 1);
     }
 
-    async function loadSelectedCalibrationDataset() {
-      const country = els.calibrationCountrySelect?.value || "korea";
-      const dataset = await loadCalibrationDataset(country);
-      state.calibrationDataset = dataset;
-      return dataset;
-    }
-
     async function runDataCalibrationMode() {
-      if (!els.dataLabResult) return;
-      try {
-        els.dataLabResult.classList.add("visible");
-        setHtmlIfChanged(els.dataLabResult, "<strong>데이터 보정</strong><br>로컬 샘플 데이터를 불러오는 중...");
-        const dataset = await loadSelectedCalibrationDataset();
-        const result = calibrateParameters({
-          historicalData: dataset,
-          initialParameters: state.modelParameters || defaultModelParameters
-        });
-        state.modelParameters = result.parameters;
-        state.modelReliability = {
-          ...(state.modelReliability || createInitialModelReliability()),
-          level: result.loss < 0.8 ? "높음" : result.loss < 1.8 ? "중간" : "낮음",
-          calibrationLoss: result.loss,
-          bestVariable: "물가·금리 방향성",
-          weakestVariable: "실업률 급변 구간",
-          lastDataset: dataset.label || dataset.country || "샘플"
-        };
-        updateSfcAccountingLayer();
-        setHtmlIfChanged(els.dataLabResult, `
-          <strong>데이터 보정 완료</strong><br>
-          데이터: ${escapeHtml(state.modelReliability.lastDataset)}<br>
-          손실값: ${round(result.loss, 3).toFixed(3)} / 후보 ${result.candidatesTested}개<br>
-          신뢰도: ${escapeHtml(state.modelReliability.level)}<br>
-          이 보정은 샘플 데이터 기반의 교육용 계수 조정입니다.
-        `);
-        updateModelReliabilityPanel();
-      } catch (error) {
-        recordRuntimeError(error, "데이터 보정 오류", "데이터 보정 실행 중 오류가 감지되었습니다.");
-        setHtmlIfChanged(els.dataLabResult, `<strong>데이터 보정 오류</strong><br>${escapeHtml(error?.message || String(error))}`);
-      }
+      return runDataCalibrationModePanel(createDataLabContext());
     }
 
     async function runBacktestMode() {
-      if (!els.dataLabResult) return;
-      try {
-        const dataset = state.calibrationDataset || await loadSelectedCalibrationDataset();
-        const result = runBacktest(dataset);
-        const directionHit = (result.gdpDirectionHitRate + result.inflationDirectionHitRate + result.unemploymentDirectionHitRate) / 3;
-        state.modelReliability = {
-          ...(state.modelReliability || createInitialModelReliability()),
-          backtestDirectionHitRate: directionHit,
-          recentError: result.averageRmse,
-          level: directionHit > 0.68 ? "높음" : directionHit > 0.55 ? "중간" : "낮음",
-          lastDataset: dataset.label || dataset.country || "샘플"
-        };
-        updateSfcAccountingLayer();
-        els.dataLabResult.classList.add("visible");
-        setHtmlIfChanged(els.dataLabResult, `
-          <strong>과거 구간 검증</strong><br>
-          GDP 방향 적중률: ${percent(result.gdpDirectionHitRate * 100, 0)}<br>
-          물가 방향 적중률: ${percent(result.inflationDirectionHitRate * 100, 0)}<br>
-          실업률 방향 적중률: ${percent(result.unemploymentDirectionHitRate * 100, 0)}<br>
-          평균 RMSE: ${round(result.averageRmse, 3).toFixed(3)}<br>
-          가장 큰 오차 구간: ${escapeHtml(result.largestErrorWindow)}
-        `);
-        updateModelReliabilityPanel();
-      } catch (error) {
-        recordRuntimeError(error, "백테스트 오류", "과거 구간 검증 중 오류가 감지되었습니다.");
-        setHtmlIfChanged(els.dataLabResult, `<strong>백테스트 오류</strong><br>${escapeHtml(error?.message || String(error))}`);
-      }
+      return runBacktestModePanel(createDataLabContext());
     }
 
     function runMonteCarloMode() {
-      if (!els.dataLabResult) return;
-      try {
-        const result = runMonteCarloScenario(state.metrics || {}, isLargeEconomyMode() ? 30 : 60);
-        state.metrics.monteCarloRecessionProbability = result.recessionProbability;
-        els.dataLabResult.classList.add("visible");
-        setHtmlIfChanged(els.dataLabResult, `
-          <strong>불확실성 분석</strong><br>
-          실행 횟수: ${result.runs}회<br>
-          GDP 중앙값: ${macroMoney(result.gdpMedian)} / 하위 10%: ${macroMoney(result.gdpP10)} / 상위 10%: ${macroMoney(result.gdpP90)}<br>
-          실업률 중앙값: ${percent(result.unemploymentMedian, 1)}<br>
-          침체 확률: ${percent(result.recessionProbability * 100, 0)} / 고실업 확률: ${percent(result.highUnemploymentProbability * 100, 0)} / 재정위험 확률: ${percent(result.fiscalRiskProbability * 100, 0)}
-        `);
-      } catch (error) {
-        recordRuntimeError(error, "몬테카를로 오류", "불확실성 분석 중 오류가 감지되었습니다.");
-        setHtmlIfChanged(els.dataLabResult, `<strong>몬테카를로 오류</strong><br>${escapeHtml(error?.message || String(error))}`);
-      }
+      return runMonteCarloModePanel(createDataLabContext());
     }
 
     function updateModelReliabilityPanel() {
-      if (els.accountingValidationValue) {
-        const validation = state.flowLedger?.lastValidation;
-        els.accountingValidationValue.textContent = validation ? `${validation.status} · ${validation.summary}` : "대기";
-      }
-      if (els.modelConfidenceValue) {
-        const reliability = state.modelReliability || createInitialModelReliability();
-        const loss = reliability.calibrationLoss == null ? "" : ` / 손실 ${round(reliability.calibrationLoss, 2).toFixed(2)}`;
-        els.modelConfidenceValue.textContent = `${reliability.level}${loss}`;
-      }
+      return updateModelReliabilityPanelView(createDataLabContext());
+    }
+
+    function createDataLabContext() {
+      return {
+        els,
+        state,
+        services: {
+          calibrateParameters,
+          defaultModelParameters,
+          loadCalibrationDataset,
+          runBacktest,
+          runMonteCarloScenario
+        },
+        helpers: {
+          createInitialModelReliability,
+          escapeHtml,
+          isLargeEconomyMode,
+          macroMoney,
+          percent,
+          recordRuntimeError,
+          round,
+          setHtmlIfChanged,
+          updateSfcAccountingLayer
+        }
+      };
     }
 
     function getPolicyComparisonVariants() {
@@ -10213,22 +9968,7 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
     }
 
     function captureSimulationSnapshot() {
-      const charts = state.charts;
-      const controls = {
-        interest: els.interestSlider.value,
-        tax: els.taxSlider.value,
-        corporateTax: els.corporateTaxSlider.value,
-        vat: els.vatSlider.value,
-        spending: els.spendingSlider.value,
-        wage: els.wageSlider.value,
-        inflation: els.inflationSlider.value,
-        scenario: els.scenarioSelect.value
-      };
-      return {
-        json: JSON.stringify(state, (key, value) => key === "charts" ? undefined : value),
-        charts,
-        controls
-      };
+      return captureSimulationSnapshotRuntime(state, els);
     }
 
     function captureUiSafeSnapshot() {
@@ -10236,36 +9976,11 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
     }
 
     function captureCoreStateSignature() {
-      const m = state.metrics || {};
-      return {
-        tick: safeNumber(state.tick, 0),
-        gdp: round(safeNumber(m.gdp, 0), 3),
-        unemploymentRate: round(safeNumber(m.unemploymentRate, 0), 3),
-        inflation: round(safeNumber(m.inflation, 0), 3),
-        financialConditionIndex: round(safeNumber(m.financialConditionIndex, 0), 3),
-        creditSupplyIndex: round(safeNumber(m.creditSupplyIndex, 100), 3),
-        bankHealthIndex: round(safeNumber(m.bankHealthIndex, 100), 3),
-        stockIndexPoints: round(safeNumber(m.stockIndexPoints, 2500), 3),
-        residentialIndex: round(safeNumber(m.residentialIndex, safeNumber(m.housingIndex, 100)), 3)
-      };
+      return captureCoreStateSignatureRuntime(state, { round, safeNumber });
     }
 
     function compareCoreStateSignature(before, after) {
-      const tolerance = {
-        tick: 0,
-        gdp: 0.01,
-        unemploymentRate: 0.01,
-        inflation: 0.01,
-        financialConditionIndex: 0.01,
-        creditSupplyIndex: 0.01,
-        bankHealthIndex: 0.01,
-        stockIndexPoints: 0.05,
-        residentialIndex: 0.01
-      };
-      return Object.keys(before || {}).filter((key) => {
-        const allowed = tolerance[key] ?? 0.01;
-        return Math.abs(safeNumber(before[key], 0) - safeNumber(after?.[key], 0)) > allowed;
-      });
+      return compareCoreStateSignatureRuntime(before, after, safeNumber);
     }
 
     function warnIfStateRestoreFailed(label, beforeSignature, targetElement = null) {
@@ -10282,22 +9997,7 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
     }
 
     function restoreSimulationSnapshot(snapshot) {
-      if (!snapshot) return;
-      const restored = JSON.parse(snapshot.json);
-      Object.keys(state).forEach((key) => delete state[key]);
-      Object.assign(state, restored);
-      state.charts = snapshot.charts || {};
-      if (snapshot.controls) {
-        els.interestSlider.value = snapshot.controls.interest;
-        els.taxSlider.value = snapshot.controls.tax;
-        els.corporateTaxSlider.value = snapshot.controls.corporateTax;
-        els.vatSlider.value = snapshot.controls.vat;
-        els.spendingSlider.value = snapshot.controls.spending;
-        els.wageSlider.value = snapshot.controls.wage;
-        els.inflationSlider.value = snapshot.controls.inflation;
-        els.scenarioSelect.value = snapshot.controls.scenario;
-      }
-      updateControlLabels();
+      restoreSimulationSnapshotRuntime(state, els, snapshot, updateControlLabels);
     }
 
     function restoreUiSafeSnapshot(snapshot) {
@@ -11999,15 +11699,7 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
 
     function recordFlow(fromType, fromId, toType, toId, amount, kind) {
       if (!Number.isFinite(amount) || amount <= 0) return;
-      if (!state.flowLedger) state.flowLedger = createFlowLedger();
-      recordEconomicFlow(state.flowLedger, {
-        period: state.tick,
-        from: { type: fromType, id: fromId },
-        to: { type: toType, id: toId },
-        amount,
-        kind,
-        description: `${fromType}→${toType}`
-      });
+      recordLedgerFlowFromUiFlow(state, { fromType, fromId, toType, toId, amount, kind });
 
       const flowThreshold = Math.max(36, state.metrics.averagePrice * 3.4, effectiveBaseWage() * 2.2);
       const shouldRecord = amount >= flowThreshold || (kind === "investment" && amount > 14);
@@ -12570,41 +12262,6 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
       return labels[value] || "일반";
     }
 
-    function rand(min, max) {
-      return Math.random() * (max - min) + min;
-    }
-
-    function clamp(value, min, max) {
-      return Math.min(max, Math.max(min, safeNumber(value, min)));
-    }
-
-    function lerp(start, end, amount) {
-      return start + (end - start) * amount;
-    }
-
-    function smoothValue(oldValue, rawValue, alpha) {
-      const safeOld = safeNumber(oldValue, rawValue);
-      const safeRaw = safeNumber(rawValue, safeOld);
-      const safeAlpha = clamp(alpha, 0, 1);
-      return safeOld * (1 - safeAlpha) + safeRaw * safeAlpha;
-    }
-
-    function applyInertia(oldDecision, targetDecision) {
-      return safeNumber(oldDecision, targetDecision) * 0.7 + safeNumber(targetDecision, oldDecision) * 0.3;
-    }
-
-    function computeNonlinearStress(debtRatio, serviceBurden = 0) {
-      const ratio = Math.max(0, safeNumber(debtRatio, 0));
-      // 기업 부채 스트레스는 낮은 레버리지에서는 완만하고, 0.9/1.25/1.75 부근부터 비선형으로 커진다.
-      const leverageStress = ratio <= 0.90
-        ? ratio * 0.14
-        : 0.126 + Math.pow(ratio - 0.90, 1.55) * 0.76;
-      let stress = leverageStress + Math.max(0, serviceBurden - 0.060) * 1.55;
-      if (ratio > 1.25) stress *= 1.28;
-      if (ratio > 1.75) stress *= 1.62;
-      return clamp(stress, 0, 1.5);
-    }
-
     function applyEquilibriumGravity() {
       const inflationGap = Math.max(0, safeNumber(state.metrics.inflation, 0) - 4.0);
       const unemploymentGap = Math.max(0, safeNumber(state.metrics.unemploymentRate, 0) - 12.0);
@@ -12615,81 +12272,3 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
         priceAdjustment: clamp(-inflationGap * 0.00055, -0.003, 0)
       };
     }
-
-    function round(value, digits = 0) {
-      const factor = 10 ** digits;
-      return Math.round(safeNumber(value, 0) * factor) / factor;
-    }
-
-    function safeNumber(value, fallback) {
-      return Number.isFinite(value) ? value : fallback;
-    }
-
-    function safeValue(value, fallback = 0) {
-      if (!Number.isFinite(value)) return fallback;
-      return value;
-    }
-
-    function escapeHtml(value) {
-      return String(value ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-    }
-
-    function sum(values) {
-      return values.reduce((total, value) => total + safeNumber(value, 0), 0);
-    }
-
-    function average(values) {
-      if (!values.length) return 0;
-      return sum(values) / values.length;
-    }
-
-    function unique(values) {
-      return [...new Set(values)];
-    }
-
-    function shuffle(values) {
-      const copy = [...values];
-      for (let i = copy.length - 1; i > 0; i -= 1) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [copy[i], copy[j]] = [copy[j], copy[i]];
-      }
-      return copy;
-    }
-
-    function calculateGini(values) {
-      const sorted = values.map((value) => Math.max(0, safeNumber(value, 0))).sort((a, b) => a - b);
-      const n = sorted.length;
-      if (n === 0) return 0;
-      const total = sum(sorted);
-      if (total <= 0) return 0;
-      let weighted = 0;
-      sorted.forEach((value, index) => {
-        weighted += (index + 1) * value;
-      });
-      return clamp((2 * weighted) / (n * total) - (n + 1) / n, 0, 1);
-    }
-
-    function roundedRect(ctx, x, y, width, height, radius) {
-      const r = Math.min(radius, width / 2, height / 2);
-      ctx.beginPath();
-      ctx.moveTo(x + r, y);
-      ctx.arcTo(x + width, y, x + width, y + height, r);
-      ctx.arcTo(x + width, y + height, x, y + height, r);
-      ctx.arcTo(x, y + height, x, y, r);
-      ctx.arcTo(x, y, x + width, y, r);
-      ctx.closePath();
-    }
-
-    function quadraticPoint(x0, y0, x1, y1, x2, y2, t) {
-      const oneMinusT = 1 - t;
-      return {
-        x: oneMinusT * oneMinusT * x0 + 2 * oneMinusT * t * x1 + t * t * x2,
-        y: oneMinusT * oneMinusT * y0 + 2 * oneMinusT * t * y1 + t * t * y2
-      };
-    }
-  
