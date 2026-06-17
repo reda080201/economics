@@ -25,14 +25,28 @@ export function calibrateParameters({ historicalData, initialParameters = defaul
 
 export function generateParameterCandidates(initialParameters) {
   const base = cloneModelParameters(initialParameters);
-  return [0.90, 1.00, 1.10].map((scale) => {
-    const candidate = cloneModelParameters(base);
-    candidate.consumption.incomeWeight *= scale;
-    candidate.investment.demandWeight *= scale;
-    candidate.inflation.demandGapWeight *= scale;
-    candidate.unemployment.outputGapWeight *= scale;
-    return candidate;
-  });
+  const grids = {
+    consumptionIncome: [0.85, 0.95, 1.05, 1.15],
+    investmentDemand: [0.85, 0.95, 1.05, 1.15],
+    inflationDemandGap: [0.80, 0.95, 1.10, 1.25],
+    unemploymentOutputGap: [0.80, 0.95, 1.10, 1.25]
+  };
+  const candidates = [];
+  for (const consumptionScale of grids.consumptionIncome) {
+    for (const investmentScale of grids.investmentDemand) {
+      for (const inflationScale of grids.inflationDemandGap) {
+        for (const unemploymentScale of grids.unemploymentOutputGap) {
+          const candidate = cloneModelParameters(base);
+          candidate.consumption.incomeWeight *= consumptionScale;
+          candidate.investment.demandWeight *= investmentScale;
+          candidate.inflation.demandGapWeight *= inflationScale;
+          candidate.unemployment.outputGapWeight *= unemploymentScale;
+          candidates.push(candidate);
+        }
+      }
+    }
+  }
+  return candidates;
 }
 
 export function calculateCalibrationLoss(simulated, actual, targetSeries) {

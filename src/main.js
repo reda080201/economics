@@ -62,6 +62,12 @@ import {
   getSectorProfile,
   weightedPick
 } from "./economy/sectorProfiles.js";
+import {
+  calculateConsumption,
+  calculateInflationPressure,
+  calculateInvestment,
+  calculateUnemploymentChange
+} from "./economy/responseFunctions.js";
 import { scenarioSelectGroups } from "./scenarios/presets.js";
 import { hydrateScenarioSelect } from "./ui/controls.js";
 import {
@@ -734,6 +740,81 @@ import {
 
     function effectiveBaseWage() {
       return state.policy ? state.policy.wageEffective : state.config.baseWage;
+    }
+
+    function currentModelParameters() {
+      return state.modelParameters || defaultModelParameters;
+    }
+
+    function computeConsumptionResponseSignal(consumer, context = {}) {
+      const rates = state.rates || {};
+      const transmission = state.macroFinancial || {};
+      const disposableIncome = Math.max(0, safeNumber(context.disposableIncome, consumer.disposableIncomeTick || consumer.income || effectiveBaseWage()));
+      const incomeReference = Math.max(1, safeNumber(consumer.income, effectiveBaseWage()));
+      const debtBurden = safeNumber(consumer.debtBurden, 0) + safeNumber(consumer.mortgageBurden, 0) * 0.45;
+      const response = calculateConsumption({
+        disposableIncome: clamp(disposableIncome / incomeReference - 1, -0.45, 0.45),
+        wealth: clamp(safeNumber(consumer.wealthEffect, safeNumber(transmission.wealthEffect, 0)), -0.08, 0.10),
+        confidence: clamp((safeNumber(consumer.confidence, 1) - 1) * 0.012, -0.012, 0.012),
+        interestRate: clamp(safeNumber(rates.realLoanRate, safeNumber(transmission.realLoanRate, 0)), -0.02, 0.08),
+        debtBurden: clamp(debtBurden, 0, 0.70)
+      }, currentModelParameters());
+      return clamp(1 + clamp(response, -1, 1) * 0.06, 0.92, 1.06);
+    }
+
+    function computeInvestmentResponseSignal(producer) {
+      const rates = state.rates || {};
+      const transmission = state.macroFinancial || {};
+      const info = state.information || {};
+      const sentiment = state.sentiment || {};
+      const demandBase = Math.max(1, safeNumber(producer.expectedDemand, 1));
+      const uncertainty = clamp(
+        safeNumber(info.informationUncertainty, 0.16)
+          + safeNumber(sentiment.policyUncertainty, 0.12)
+          + safeNumber(state.metrics?.recessionFear, 0.20) * 0.25,
+        0,
+        1.4
+      );
+      const response = calculateInvestment({
+        expectedDemand: clamp(safeNumber(producer.investmentDemandMemory, producer.unitsSoldTick || demandBase) / demandBase - 1, -0.55, 0.55),
+        profit: clamp(safeNumber(producer.profitTrend, producer.lastProfit) / 900, -0.70, 0.70),
+        capacityUtilization: clamp((safeNumber(producer.productionUtilization, 0.78) - 0.78) * 0.010, -0.008, 0.008),
+        interestRate: clamp(safeNumber(rates.realLoanRate, safeNumber(transmission.realLoanRate, 0)), -0.02, 0.08),
+        uncertainty: clamp(uncertainty * 0.012, 0, 0.018)
+      }, currentModelParameters());
+      return clamp(1 + clamp(response, -1, 1) * 0.08, 0.90, 1.08);
+    }
+
+    function computeInflationResponseSignal(producer, observedDemand) {
+      const expectedDemand = Math.max(1, safeNumber(producer.expectedDemand, observedDemand || 1));
+      const response = calculateInflationPressure({
+        demandGap: clamp((safeNumber(observedDemand, 0) - expectedDemand) / expectedDemand, -1, 1),
+        wagePressure: clamp(safeNumber(state.smoothedWageGrowth, 0) / 10, -1, 1),
+        importPriceShock: clamp(
+          safeNumber(state.metrics?.importInflationPressure, 0) / 7
+            + safeNumber(state.metrics?.commodityCostPressure, 0) / 9,
+          -1,
+          1
+        ),
+        inflationExpectation: clamp((safeNumber(producer.expectedInflation, TARGET_INFLATION) - TARGET_INFLATION) / 6, -1, 1)
+      }, currentModelParameters());
+      return clamp(response * 0.0035, -0.0045, 0.0065);
+    }
+
+    function computeLaborResponseSignal(producer, unemploymentRate) {
+      const outputGap = clamp(safeNumber(state.metrics?.outputGap, getGDPGrowthWindow() / 3) / 8, -1, 1);
+      const hiringMomentum = clamp(
+        (safeNumber(producer.smoothedTargetEmployees, producer.employees.length) - producer.employees.length) / Math.max(1, producer.employees.length),
+        -1,
+        1
+      );
+      const response = calculateUnemploymentChange({
+        outputGap,
+        wageRigidity: clamp(safeNumber(state.smoothedWageGrowth, 0) / 10, 0, 1),
+        firmStress: clamp(safeNumber(producer.stressMemory, producer.debtStress || 0) / 1.5 + Math.max(0, unemploymentRate - 0.08) * 0.25, 0, 1),
+        hiringMomentum
+      }, currentModelParameters());
+      return clamp(1 - clamp(response, -1, 1) * 0.08, 0.92, 1.06);
     }
 
     // ===== 에이전트 생성과 리셋 =====
@@ -2404,10 +2485,11 @@ import {
           interestHiringDrag * 0.16 +
           debtHiringDrag * 0.16
         );
+        const responseLaborMultiplier = computeLaborResponseSignal(producer, unemploymentRate);
         const canFallBelowMinimum = producer.cash < producer.wageOffered * 0.45 || stressMemory > 1.60 || (producer.deepLossMonths || 0) >= 8;
         const lowerBoundEmployees = canFallBelowMinimum ? 0 : Math.min(employmentAnchor, producer.employees.length + (isMonthlyDecision ? 1 : 0));
         let rawTargetEmployees = clamp(
-          Math.round(demandBasedTarget * clamp(dragAverage * recoveryHiringBoost * naturalUnemploymentFriction, 0.62, 1.12)),
+          Math.round(demandBasedTarget * clamp(dragAverage * responseLaborMultiplier * recoveryHiringBoost * naturalUnemploymentFriction, 0.62, 1.12)),
           lowerBoundEmployees,
           Math.min(34, cashCapacity, productiveLimit)
         );
@@ -2846,8 +2928,9 @@ import {
         const sentimentAdjustedConfidence = 1 + (consumer.confidence - 1) * CALIBRATION.sentimentWeight;
         const classProfile = state.classAnalysis?.classes?.[consumer.incomeSegment];
         const classConsumptionMultiplier = clamp(safeNumber(classProfile?.consumptionMultiplier, 1), 0.82, 1.08);
+        const responseConsumptionMultiplier = computeConsumptionResponseSignal(consumer, { disposableIncome });
         let consumptionBudget = (incomeBudget + cashBudget) * sentimentAdjustedConfidence * inflationDrag * vatDrag * precautionarySaving * bufferDrag * jobSecurity * stressDrag * debtServiceDrag * healthyEmployedBoost * lowUnemploymentDemandBoost * inventoryClearanceBoost * state.shock.demandMultiplier;
-        consumptionBudget *= mortgageBurdenDrag * depositSavingDrag * psychologyDrag * informationDrag * creditPsychDrag * behavioralBias * perceivedPainDrag * classPolicyTransferBoost * classConsumptionMultiplier * (1 + limitedWealthEffect);
+        consumptionBudget *= mortgageBurdenDrag * depositSavingDrag * psychologyDrag * informationDrag * creditPsychDrag * behavioralBias * perceivedPainDrag * classPolicyTransferBoost * classConsumptionMultiplier * responseConsumptionMultiplier * (1 + limitedWealthEffect);
         // 명시적 금리 공식: 금리가 오를수록 같은 소득에서도 소비 예산이 줄어든다.
         consumptionBudget *= interestTransmission;
         consumer.smoothedConsumptionBudget = smoothValue(
@@ -3010,6 +3093,7 @@ import {
         const collapseDrag = stressMemory > 1.25 ? clamp(1 - (stressMemory - 1.25) * 1.15, 0.24, 1) : 1;
         const stressInvestmentDrag = stressMemory > 1.25 ? clamp(0.72 - Math.max(0, stressMemory - 1.25) * 0.34, 0.24, 0.72) : clamp(1 - Math.pow(producer.debtStress, 1.20) * 0.25, 0.68, 1);
         const outlookInvestmentSignal = clamp(producer.businessOutlook, 0.45, 1.22);
+        const responseInvestmentMultiplier = computeInvestmentResponseSignal(producer);
         const sentimentInvestmentSignal = clamp(
           0.72
             + safeNumber(producer.investmentAppetite, 0.5) * 0.34
@@ -3027,7 +3111,7 @@ import {
         const profitMood = producer.profitTrend > 0 ? 1.10 : 0.78;
         const baseInvestment = Math.min(
           producer.cash * 0.18,
-          excessCash * producer.investmentPropensity * demandStrength * profitMood * inventoryInvestmentDrag * utilizationSignal * financialConditionDrag * financingConditionMultiplier * creditSupplyMultiplier * creditSpreadDrag * borrowingCostDrag * sectorRateDrag * constructionMortgageDrag * sectorExternalDrag * sectorBehaviorMultiplier * creditPsychMultiplier * vulnerabilityInvestmentDrag * ratingInvestmentDrag * zombieDrag * strategyInvestmentMultiplier * shareholderAllocationDrag * taxReliefInvestmentGate * stressInvestmentDrag * collapseDrag * outlookInvestmentSignal * sentimentInvestmentSignal * clamp(producer.activityDrag || 1, 0.35, 1)
+          excessCash * producer.investmentPropensity * demandStrength * profitMood * inventoryInvestmentDrag * utilizationSignal * financialConditionDrag * financingConditionMultiplier * creditSupplyMultiplier * creditSpreadDrag * borrowingCostDrag * sectorRateDrag * constructionMortgageDrag * sectorExternalDrag * sectorBehaviorMultiplier * creditPsychMultiplier * vulnerabilityInvestmentDrag * ratingInvestmentDrag * zombieDrag * strategyInvestmentMultiplier * shareholderAllocationDrag * taxReliefInvestmentGate * stressInvestmentDrag * collapseDrag * outlookInvestmentSignal * sentimentInvestmentSignal * responseInvestmentMultiplier * clamp(producer.activityDrag || 1, 0.35, 1)
         );
         // 명시적 투자 공식: investment = base * (1 - interestRate * factor)
         const maintenanceInvestment = producer.lastProfit > -35 && producer.cash > payrollBuffer * 1.15 && stressMemory < 1.20
@@ -3112,8 +3196,9 @@ import {
       const expectations = clamp(expectationNorm * 0.005, -0.004, 0.007);
       const equilibriumPull = clamp((TARGET_INFLATION - state.smoothedInflation) * 0.00220, -0.003, 0.007);
       const meanReversion = clamp(-priceDeviation * 0.006, -0.006, 0.006);
+      const responseInflationPressure = computeInflationResponseSignal(producer, observedDemand);
 
-      let rawChange = state.shock.pricePressure + demandPull + costPush + shortage + expectations + equilibriumPull + meanReversion;
+      let rawChange = state.shock.pricePressure + demandPull + costPush + shortage + expectations + equilibriumPull + meanReversion + responseInflationPressure;
       const recessionary = state.metrics.unemploymentRate > 12 || getGDPGrowthWindow() < -4;
         const tightLabor = state.metrics.unemploymentRate < 6 && !recessionary;
       if (state.smoothedInflation < 1.0) rawChange += recessionary ? 0.00250 : 0.00950;
@@ -3130,7 +3215,7 @@ import {
       producer.lastPriceChange = change;
       producer.longRunPrice = clamp(smoothValue(longRunPrice, producer.price, 0.006), 2.2, 65);
 
-      return { change, demandPull, costPush, shortage, expectations };
+      return { change, demandPull, costPush, shortage, expectations: expectations + responseInflationPressure };
     }
 
     function adjustProducerPricesAndExpectations() {

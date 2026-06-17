@@ -1,4 +1,10 @@
 import { defaultModelParameters } from "./modelParameters.js";
+import {
+  calculateConsumption,
+  calculateInflationPressure,
+  calculateInvestment,
+  calculateUnemploymentChange
+} from "../economy/responseFunctions.js";
 import { rmse, toGrowthRate } from "../data/transformations.js";
 
 export function runBacktest(dataset, parameters = defaultModelParameters, options = {}) {
@@ -38,7 +44,7 @@ export function runBacktest(dataset, parameters = defaultModelParameters, option
     simulated,
     actual,
     rmseBySeries,
-    method: "recursive_parameter_simulation"
+    method: "recursive_response_function_simulation"
   };
 }
 
@@ -63,23 +69,35 @@ export function simulateBacktestPath(dataset, parameters = defaultModelParameter
     const previousGdpGrowth = pctChange(simulated.gdp[i - 1], simulated.gdp[Math.max(0, i - 2)] || simulated.gdp[i - 1]);
     const previousInflation = pctChange(simulated.cpi[i - 1], simulated.cpi[Math.max(0, i - 2)] || simulated.cpi[i - 1]);
     const outputGapProxy = previousGdpGrowth - 2;
-    const demandPulse = exportGrowth * 0.18 - policyRate * 0.08 - householdDebtPressure * 0.8 + parameters.consumption.incomeWeight;
-    const gdpGrowth = clamp(previousGdpGrowth * 0.35 + demandPulse + parameters.investment.demandWeight * 2.2, -8, 8);
-    const inflation = clamp(
-      previousInflation * 0.35 +
-      parameters.inflation.demandGapWeight * outputGapProxy +
-      parameters.inflation.importPriceShockWeight * (exchangeShock + importGrowth) +
-      policyRate * -0.05,
-      -3,
-      12
-    );
-    const unemploymentChange = clamp(
-      parameters.unemployment.outputGapWeight * outputGapProxy +
-      parameters.unemployment.firmStressWeight * Math.max(0, debtPressure - 0.7) +
-      policyRate * 0.035,
-      -2.5,
-      3.5
-    );
+    const consumptionSignal = calculateConsumption({
+      disposableIncome: 1 - householdDebtPressure,
+      wealth: exportGrowth / 10,
+      confidence: clamp(1 - policyRate / 12 - Math.max(0, debtPressure - 0.7), -1, 1),
+      interestRate: -policyRate / 10,
+      debtBurden: -householdDebtPressure
+    }, parameters);
+    const investmentSignal = calculateInvestment({
+      expectedDemand: exportGrowth / 6,
+      profit: previousGdpGrowth / 5,
+      capacityUtilization: outputGapProxy / 4,
+      interestRate: -policyRate / 10,
+      uncertainty: -Math.max(0, debtPressure - 0.7)
+    }, parameters);
+    const inflationSignal = calculateInflationPressure({
+      demandGap: outputGapProxy,
+      wagePressure: Math.max(0, previousInflation - 2) / 3,
+      importPriceShock: exchangeShock + importGrowth,
+      inflationExpectation: previousInflation
+    }, parameters);
+    const unemploymentSignal = calculateUnemploymentChange({
+      outputGap: outputGapProxy,
+      wageRigidity: Math.max(0, previousInflation - 2) / 4,
+      firmStress: Math.max(0, debtPressure - 0.7),
+      hiringMomentum: previousGdpGrowth / 6
+    }, parameters);
+    const gdpGrowth = clamp(previousGdpGrowth * 0.35 + consumptionSignal * 0.32 + investmentSignal * 0.26 + exportGrowth * 0.18, -8, 8);
+    const inflation = clamp(previousInflation * 0.35 + inflationSignal * 0.40 + policyRate * -0.05, -3, 12);
+    const unemploymentChange = clamp(unemploymentSignal * 0.38 + policyRate * 0.035, -2.5, 3.5);
     simulated.gdp.push(Math.max(1, simulated.gdp[i - 1] * (1 + gdpGrowth / 100)));
     simulated.cpi.push(Math.max(1, simulated.cpi[i - 1] * (1 + inflation / 100)));
     simulated.unemployment.push(clamp(simulated.unemployment[i - 1] + unemploymentChange, 0.5, 25));

@@ -70,7 +70,7 @@ data/
 
 ## 백테스트와 데이터 보정
 
-백테스트는 실제값을 그대로 복사하지 않고, 첫 관측값에서 시작해 모델 반응식과 과거 외생 변수로 simulated path를 만든 뒤 실제 데이터와 비교합니다.
+백테스트와 캘리브레이션은 실제값을 그대로 복사하지 않고, 첫 관측값에서 시작해 공통 response function과 과거 외생 변수로 recursive simulated path를 만든 뒤 실제 데이터와 비교합니다.
 
 현재 데이터 소스는 로컬 샘플 JSON입니다. FRED, ECOS, OECD adapter는 향후 API 연동을 위한 stub 상태입니다.
 
