@@ -11,6 +11,7 @@ export function runBacktest(dataset, parameters = defaultModelParameters, option
   const cpiSimGrowth = toGrowthRate(toPointSeries(dates, simulated.cpi)).map((point) => point.value);
   const unemploymentActualDirection = directionOfChanges(actual.unemployment);
   const unemploymentSimDirection = directionOfChanges(simulated.unemployment);
+  const crisisWindows = detectCrisisWindows(dates, gdpActualGrowth, cpiActualGrowth, actual.unemployment);
   const rmseBySeries = {
     gdpGrowth: rmse(gdpSimGrowth, gdpActualGrowth),
     inflation: rmse(cpiSimGrowth, cpiActualGrowth),
@@ -24,6 +25,16 @@ export function runBacktest(dataset, parameters = defaultModelParameters, option
     unemploymentDirectionHitRate: hitRate(unemploymentSimDirection, unemploymentActualDirection),
     averageRmse: (rmseBySeries.gdpGrowth + rmseBySeries.inflation + rmseBySeries.unemployment) / 3,
     largestErrorWindow: largestErrorWindow(dates, simulated, actual),
+    crisisReactionScore: scoreCrisisReaction(crisisWindows, {
+      gdpSimGrowth,
+      gdpActualGrowth,
+      cpiSimGrowth,
+      cpiActualGrowth,
+      unemploymentSimDirection,
+      unemploymentActualDirection
+    }),
+    crisisWindows,
+    leakageCheckPassed: hasNonCopiedSimulation(simulated, actual),
     simulated,
     actual,
     rmseBySeries,
@@ -133,6 +144,47 @@ function largestErrorWindow(dates, simulated, actual) {
     }
   });
   return `${dates[Math.max(0, worstIndex - 1)] || dates[worstIndex]} ~ ${dates[worstIndex]}`;
+}
+
+function detectCrisisWindows(dates, gdpGrowth, inflationGrowth, unemployment) {
+  return dates.slice(1).map((date, rawIndex) => {
+    const index = rawIndex + 1;
+    const unemploymentChange = unemployment[index] - unemployment[index - 1];
+    const stress =
+      Math.max(0, -gdpGrowth[rawIndex] - 1.5) +
+      Math.max(0, inflationGrowth[rawIndex] - 4.0) * 0.7 +
+      Math.max(0, unemploymentChange - 0.7) * 1.2;
+    return {
+      date,
+      index,
+      stress,
+      type: stress > 0
+        ? unemploymentChange > 0.7
+          ? "고용 충격"
+          : inflationGrowth[rawIndex] > 4.0
+            ? "물가 충격"
+            : "성장 충격"
+        : "정상"
+    };
+  }).filter((window) => window.stress > 0);
+}
+
+function scoreCrisisReaction(crisisWindows, series) {
+  if (!crisisWindows.length) return 1;
+  const scores = crisisWindows.map((window) => {
+    const growthIndex = Math.max(0, window.index - 1);
+    const gdpMatch = Math.sign(series.gdpSimGrowth[growthIndex]) === Math.sign(series.gdpActualGrowth[growthIndex]) ? 1 : 0;
+    const inflationMatch = Math.sign(series.cpiSimGrowth[growthIndex]) === Math.sign(series.cpiActualGrowth[growthIndex]) ? 1 : 0;
+    const unemploymentMatch = series.unemploymentSimDirection[window.index] === series.unemploymentActualDirection[window.index] ? 1 : 0;
+    return (gdpMatch * 0.42 + inflationMatch * 0.24 + unemploymentMatch * 0.34) * Math.min(1, window.stress / 4);
+  });
+  return scores.reduce((sum, value) => sum + value, 0) / Math.max(1, scores.length);
+}
+
+function hasNonCopiedSimulation(simulated, actual) {
+  return ["gdp", "cpi", "unemployment"].some((key) =>
+    (simulated[key] || []).some((value, index) => Math.abs(value - (actual[key]?.[index] ?? value)) > 1e-9)
+  );
 }
 
 function clamp(value, min, max) {

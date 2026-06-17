@@ -55,6 +55,8 @@ export async function runBacktestMode(context) {
       물가 방향 적중률: ${helpers.percent(result.inflationDirectionHitRate * 100, 0)}<br>
       실업률 방향 적중률: ${helpers.percent(result.unemploymentDirectionHitRate * 100, 0)}<br>
       평균 RMSE: ${helpers.round(result.averageRmse, 3).toFixed(3)}<br>
+      위기 반응 점수: ${helpers.percent(result.crisisReactionScore * 100, 0)} / 감지 구간 ${result.crisisWindows.length}개<br>
+      복사 방지 검증: ${result.leakageCheckPassed ? "통과" : "확인 필요"}<br>
       가장 큰 오차 구간: ${helpers.escapeHtml(result.largestErrorWindow)}<br>
       방식: ${helpers.escapeHtml(result.method)}
     `);
