@@ -182,8 +182,11 @@ function getDatasetOptionsFromUi(context) {
 }
 
 function renderDatasetStatus(dataset, helpers) {
-  const loaded = formatSeriesList(dataset.loadedSeries, dataset.seriesSourceMap, helpers, dataset.source || "live data");
-  const missing = formatSeriesList(dataset.missingSeries, dataset.seriesSourceMap, helpers, "로컬 샘플");
+  const loaded = formatSeriesList(dataset.loadedSeries, dataset.seriesSourceMap, dataset.seriesObservationCounts, helpers, dataset.source || "live data");
+  const missing = formatSeriesList(dataset.missingSeries, dataset.seriesSourceMap, dataset.seriesObservationCounts, helpers, "로컬 샘플");
+  const totalSeries = (dataset.loadedSeries?.length || 0) + (dataset.missingSeries?.length || 0);
+  const officialCount = dataset.officialSeriesCount ?? dataset.loadedSeries?.length ?? 0;
+  const fallbackCount = dataset.fallbackSeriesCount ?? dataset.missingSeries?.length ?? 0;
   const corsHint = dataset.source === "FRED"
     ? "<br>도움말: FRED는 미국 데이터 중심입니다. 브라우저 직접 호출이 막히면 Network 탭에서 fred/series/observations 요청을 확인하고 backend proxy를 고려하세요."
     : "";
@@ -193,9 +196,11 @@ function renderDatasetStatus(dataset, helpers) {
   return `
     <strong>데이터 불러오기 완료</strong><br>
     데이터 소스: ${helpers.escapeHtml(dataset.source || "local")}<br>
+    공식 데이터 사용률: ${officialCount}/${totalSeries || 0}개 지표 (${helpers.percent((dataset.officialDataRatio || 0) * 100, 0)})<br>
+    샘플 보완: ${fallbackCount}/${totalSeries || 0}개 지표<br>
     불러온 지표: ${loaded}<br>
     샘플로 보완된 지표: ${missing}<br>
-    보완 방식: ${dataset.fallbackUsed ? "로컬 샘플 fallback" : "live data"}<br>
+    정렬 방식: ${helpers.escapeHtml(dataset.alignmentMethod || "원본")} / 보완 방식: ${dataset.fallbackUsed ? "로컬 샘플 fallback" : "live data"}<br>
     마지막 업데이트: ${helpers.escapeHtml(dataset.updatedAt || "로컬 샘플")}
     ${corsHint}
     ${warnings}
@@ -210,17 +215,18 @@ function renderDataSourceStatus(context, dataset) {
   const missing = dataset.missingSeries?.length || 0;
   helpers.setHtmlIfChanged(
     els.dataSourceStatusValue,
-    `${helpers.escapeHtml(source)} · 불러온 지표 ${loaded}개 · 샘플 보완 ${missing}개${dataset.fallbackUsed ? " · fallback 사용" : ""}${source === "FRED" ? " · FRED는 미국 데이터 중심" : ""}`
+    `${helpers.escapeHtml(source)} · 공식 데이터 ${loaded}/${loaded + missing}개 · 샘플 보완 ${missing}개${dataset.fallbackUsed ? " · fallback 사용" : ""}${source === "FRED" ? " · FRED는 미국 데이터 중심" : ""}`
   );
 }
 
-function formatSeriesList(seriesKeys = [], sourceMap = {}, helpers, fallbackSource = "") {
+function formatSeriesList(seriesKeys = [], sourceMap = {}, observationCounts = {}, helpers, fallbackSource = "") {
   if (!Array.isArray(seriesKeys) || !seriesKeys.length) return "없음";
   return seriesKeys
     .map((key) => {
       const label = macroSeriesLabels[key] || key;
       const source = sourceMap[key] || fallbackSource;
-      return `${helpers.escapeHtml(label)}(${helpers.escapeHtml(source)})`;
+      const count = Number.isFinite(Number(observationCounts[key])) ? ` · ${Number(observationCounts[key])}개` : "";
+      return `${helpers.escapeHtml(label)}(${helpers.escapeHtml(source)}${count})`;
     })
     .join(", ");
 }

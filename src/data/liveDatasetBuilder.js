@@ -2,6 +2,7 @@ import { macroSeriesKeys } from "./dataSources.js";
 import { fetchFredSeries, fredSeriesMap } from "./fredAdapter.js";
 import { ecosSeriesMap, fetchEcosSeries } from "./ecosAdapter.js";
 import { fetchOecdSeries } from "./oecdAdapter.js";
+import { alignMacroDatasetMonthly } from "./transformations.js";
 
 export async function buildLiveMacroDataset({ country = "us", provider = "local", apiKeys = {}, startDate = "2015-01", endDate = "2024-12", fallbackDataset }) {
   const fallback = normalizeFallbackDataset(fallbackDataset);
@@ -12,7 +13,7 @@ export async function buildLiveMacroDataset({ country = "us", provider = "local"
     return buildEcosDataset({ apiKey: apiKeys.ecos, startDate, endDate, fallbackDataset: fallback });
   }
   if (provider === "oecd") {
-    return buildStubFallbackDataset({ provider: "OECD", fallbackDataset: fallback, loader: fetchOecdSeries });
+    return buildStubFallbackDataset({ provider: "OECD", fallbackDataset: fallback, loader: fetchOecdSeries, startDate, endDate });
   }
   return fallback;
 }
@@ -45,7 +46,9 @@ async function buildEcosDataset({ apiKey, startDate, endDate, fallbackDataset })
     country: fallbackDataset.country,
     liveSeries,
     fallbackDataset,
-    warnings
+    warnings,
+    startDate,
+    endDate
   });
 }
 
@@ -79,11 +82,13 @@ async function buildFredDataset({ country, apiKey, startDate, endDate, fallbackD
     country,
     liveSeries,
     fallbackDataset,
-    warnings
+    warnings,
+    startDate,
+    endDate
   });
 }
 
-async function buildStubFallbackDataset({ provider, fallbackDataset, loader }) {
+async function buildStubFallbackDataset({ provider, fallbackDataset, loader, startDate, endDate }) {
   const warnings = [];
   try {
     await loader({});
@@ -95,11 +100,13 @@ async function buildStubFallbackDataset({ provider, fallbackDataset, loader }) {
     country: fallbackDataset.country,
     liveSeries: {},
     fallbackDataset,
-    warnings
+    warnings,
+    startDate: firstSeriesDate(fallbackDataset),
+    endDate: lastSeriesDate(fallbackDataset)
   });
 }
 
-function mergeWithFallback({ providerLabel, country, liveSeries, fallbackDataset, warnings }) {
+function mergeWithFallback({ providerLabel, country, liveSeries, fallbackDataset, warnings, startDate, endDate }) {
   const dataset = {
     ...fallbackDataset,
     country,
@@ -130,7 +137,11 @@ function mergeWithFallback({ providerLabel, country, liveSeries, fallbackDataset
   if (!dataset.loadedSeries.length) {
     dataset.warnings.push(`${providerLabel} live series를 불러오지 못해 전체 로컬 샘플을 사용했습니다.`);
   }
-  return dataset;
+  return addQualityMetadata(alignMacroDatasetMonthly(dataset, {
+    startDate: startDate || firstSeriesDate(dataset),
+    endDate: endDate || lastSeriesDate(dataset),
+    keys: macroSeriesKeys
+  }));
 }
 
 function normalizeFallbackDataset(fallbackDataset = {}) {
@@ -139,4 +150,30 @@ function normalizeFallbackDataset(fallbackDataset = {}) {
     if (!Array.isArray(dataset[key])) dataset[key] = [];
   });
   return dataset;
+}
+
+function addQualityMetadata(dataset) {
+  const seriesObservationCounts = {};
+  macroSeriesKeys.forEach((key) => {
+    seriesObservationCounts[key] = Array.isArray(dataset[key]) ? dataset[key].length : 0;
+  });
+  const officialSeriesCount = Array.isArray(dataset.loadedSeries) ? dataset.loadedSeries.length : 0;
+  const fallbackSeriesCount = Array.isArray(dataset.missingSeries) ? dataset.missingSeries.length : 0;
+  return {
+    ...dataset,
+    seriesObservationCounts,
+    officialSeriesCount,
+    fallbackSeriesCount,
+    officialDataRatio: macroSeriesKeys.length ? officialSeriesCount / macroSeriesKeys.length : 0
+  };
+}
+
+function firstSeriesDate(dataset) {
+  const dates = macroSeriesKeys.flatMap((key) => (dataset[key] || []).map((point) => point.date)).filter(Boolean).sort();
+  return dates[0] || "2015-01";
+}
+
+function lastSeriesDate(dataset) {
+  const dates = macroSeriesKeys.flatMap((key) => (dataset[key] || []).map((point) => point.date)).filter(Boolean).sort();
+  return dates[dates.length - 1] || "2024-12";
 }
