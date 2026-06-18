@@ -22,9 +22,14 @@ export async function fetchFredSeries({ apiKey, seriesId, startDate, endDate, un
   url.searchParams.set("observation_end", normalizeApiDate(endDate, "2024-12"));
   url.searchParams.set("units", units);
 
-  const response = await fetch(url);
+  let response;
+  try {
+    response = await fetch(url);
+  } catch (error) {
+    throw new Error(`FRED 네트워크/CORS 가능 오류: ${error?.message || String(error)}. 브라우저 직접 호출이 막히면 backend proxy가 필요할 수 있습니다.`);
+  }
   if (!response.ok) {
-    throw new Error(`FRED request failed: ${response.status}`);
+    throw new Error(`FRED request failed: ${response.status}. API key, series code, 요청 한도 또는 CORS 정책을 확인하세요.`);
   }
 
   const data = await response.json();

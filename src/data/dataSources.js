@@ -18,3 +18,17 @@ export const macroSeriesKeys = [
   "exports",
   "imports"
 ];
+
+export const macroSeriesLabels = {
+  gdp: "GDP",
+  cpi: "소비자물가지수",
+  unemployment: "실업률",
+  policyRate: "정책금리",
+  governmentDebt: "정부부채",
+  householdDebt: "가계부채",
+  housePriceIndex: "주택가격",
+  stockIndex: "주가지수",
+  exchangeRate: "환율",
+  exports: "수출",
+  imports: "수입"
+};

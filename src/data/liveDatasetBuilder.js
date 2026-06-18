@@ -1,6 +1,6 @@
 import { macroSeriesKeys } from "./dataSources.js";
 import { fetchFredSeries, fredSeriesMap } from "./fredAdapter.js";
-import { fetchEcosSeries } from "./ecosAdapter.js";
+import { ecosSeriesMap, fetchEcosSeries } from "./ecosAdapter.js";
 import { fetchOecdSeries } from "./oecdAdapter.js";
 
 export async function buildLiveMacroDataset({ country = "us", provider = "local", apiKeys = {}, startDate = "2015-01", endDate = "2024-12", fallbackDataset }) {
@@ -9,12 +9,44 @@ export async function buildLiveMacroDataset({ country = "us", provider = "local"
     return buildFredDataset({ country, apiKey: apiKeys.fred, startDate, endDate, fallbackDataset: fallback });
   }
   if (provider === "ecos") {
-    return buildStubFallbackDataset({ provider: "ECOS", fallbackDataset: fallback, loader: fetchEcosSeries });
+    return buildEcosDataset({ apiKey: apiKeys.ecos, startDate, endDate, fallbackDataset: fallback });
   }
   if (provider === "oecd") {
     return buildStubFallbackDataset({ provider: "OECD", fallbackDataset: fallback, loader: fetchOecdSeries });
   }
   return fallback;
+}
+
+async function buildEcosDataset({ apiKey, startDate, endDate, fallbackDataset }) {
+  const liveSeries = {};
+  const warnings = [];
+  await Promise.all(Object.entries(ecosSeriesMap).map(async ([key, config]) => {
+    try {
+      liveSeries[key] = await fetchEcosSeries({
+        apiKey,
+        statCode: config.statCode,
+        cycle: config.cycle,
+        startDate,
+        endDate,
+        itemCode1: config.itemCode1,
+        label: config.label
+      });
+      if (!liveSeries[key].length) {
+        delete liveSeries[key];
+        warnings.push(`ECOS ${config.label} 데이터가 비어 있어 로컬 샘플로 보완했습니다.`);
+      }
+    } catch (error) {
+      warnings.push(`${config.label}: ${error?.message || String(error)}`);
+    }
+  }));
+
+  return mergeWithFallback({
+    providerLabel: "ECOS",
+    country: fallbackDataset.country,
+    liveSeries,
+    fallbackDataset,
+    warnings
+  });
 }
 
 async function buildFredDataset({ country, apiKey, startDate, endDate, fallbackDataset }) {
@@ -77,6 +109,7 @@ function mergeWithFallback({ providerLabel, country, liveSeries, fallbackDataset
     warnings: [...warnings],
     loadedSeries: [],
     missingSeries: [],
+    seriesSourceMap: {},
     fallbackUsed: false
   };
 
@@ -85,9 +118,11 @@ function mergeWithFallback({ providerLabel, country, liveSeries, fallbackDataset
     if (series.length) {
       dataset[key] = series;
       dataset.loadedSeries.push(key);
+      dataset.seriesSourceMap[key] = providerLabel;
     } else {
       dataset[key] = Array.isArray(fallbackDataset[key]) ? fallbackDataset[key] : [];
       dataset.missingSeries.push(key);
+      dataset.seriesSourceMap[key] = "로컬 샘플";
       dataset.fallbackUsed = true;
     }
   });
