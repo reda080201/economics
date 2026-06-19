@@ -80,13 +80,13 @@ data/
 
 데이터랩은 기본적으로 로컬 샘플 데이터를 사용하며, 선택적으로 공식 데이터 API를 실험용 보강 데이터로 불러올 수 있습니다.
 
-- FRED: 미국 거시경제 시계열 일부를 live data로 불러올 수 있습니다.
+- FRED: 미국 거시경제 시계열 일부를 live data로 불러올 수 있으며, 선택적으로 backend proxy URL을 지정할 수 있습니다.
 - ECOS: 한국은행 경제통계 연동을 위한 adapter 구조와 일부 1차 매핑 후보가 준비되어 있으며, 미확정 통계코드는 로컬 샘플로 보완됩니다.
 - OECD: 국가 비교용 SDMX adapter stub만 준비되어 있으며, 아직 실제 live 연동은 아닙니다.
-- API 키: FRED와 ECOS 키는 브라우저 `localStorage`에만 저장되며 GitHub 저장소에는 포함하지 않습니다.
+- API 키: FRED와 ECOS 키는 브라우저 `localStorage`에만 저장되며 GitHub 저장소에는 포함하지 않습니다. proxy를 운영하는 경우 API key는 서버에 보관하고 프론트에는 정규화된 macro series만 전달하는 방식을 권장합니다.
 - Fallback: API key 누락, 네트워크 오류, CORS 오류, 데이터 누락이 발생하면 `data/sample_korea_macro.json` 또는 `data/sample_us_macro.json`으로 자동 전환합니다.
 - 데이터 정렬: FRED live data는 월별 날짜 범위로 정렬하며, GDP·정부부채처럼 분기 관측이 섞인 지표는 이전 관측값을 forward-fill해 캘리브레이션 입력 길이를 맞춥니다.
-- 공개 배포: 실제 서비스 환경에서는 브라우저 직접 호출보다 backend proxy 사용을 권장합니다.
+- 공개 배포: 실제 서비스 환경에서는 브라우저 직접 호출보다 backend proxy 사용을 권장합니다. 데이터랩의 고급 API 설정에서 FRED proxy URL을 지정하면 브라우저가 FRED 원본 API 대신 해당 endpoint를 호출합니다.
 - FRED 수동 확인: API key 입력 → 저장 → 데이터 소스 `FRED live data` 선택 → 공식 데이터 불러오기 → 브라우저 Network 탭에서 `fred/series/observations` 요청과 불러온 지표 수를 확인합니다.
 - FRED 성공 기준: 데이터랩에 `불러온 지표`가 1개 이상 표시되고, 각 지표 옆에 `FRED · 관측 개수`가 표시됩니다. 실패하거나 일부 누락되면 `샘플로 보완된 지표`와 fallback 경고가 함께 표시됩니다.
 
@@ -101,7 +101,7 @@ data/
 ## 향후 계획
 
 - `src/main.js`의 노동, 소비, 생산, 정부, 금융 로직을 `economy/` 모듈로 추가 분리
-- FRED adapter 안정화 및 backend proxy 옵션 추가
+- FRED backend proxy endpoint 예시와 배포 가이드 추가
 - ECOS/OECD 실제 통계코드 매핑 및 live data 연동
 - 샘플 데이터 확장 및 공식 데이터 매핑 테이블 보강
 - SFC 회계 검증 범위를 은행·대외·자산시장 flow까지 확대

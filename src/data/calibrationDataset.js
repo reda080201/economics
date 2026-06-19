@@ -12,7 +12,8 @@ export async function loadCalibrationDataset(country = "korea", options = {}) {
     provider = "local",
     startDate = "2015-01",
     endDate = "2024-12",
-    apiKeys = {}
+    apiKeys = {},
+    proxyUrls = {}
   } = options;
   const fallbackDataset = await loadLocalDataset(country);
   if (provider === "local") return fallbackDataset;
@@ -21,6 +22,7 @@ export async function loadCalibrationDataset(country = "korea", options = {}) {
     country,
     provider,
     apiKeys,
+    proxyUrls,
     startDate,
     endDate,
     fallbackDataset
@@ -43,6 +45,7 @@ async function loadLocalDataset(country = "korea") {
     loadedSeries: [],
     missingSeries: [...macroSeriesKeys],
     seriesSourceMap,
+    seriesStatusMap: Object.fromEntries(macroSeriesKeys.map((key) => [key, "fallback"])),
     seriesObservationCounts,
     officialSeriesCount: 0,
     fallbackSeriesCount: macroSeriesKeys.length,

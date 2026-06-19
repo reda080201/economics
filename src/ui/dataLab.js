@@ -190,18 +190,21 @@ function getDatasetOptionsFromUi(context) {
     apiKeys: {
       fred: (els.fredApiKeyInput?.value || getApiKey("fred") || "").trim(),
       ecos: (els.ecosApiKeyInput?.value || getApiKey("ecos") || "").trim()
+    },
+    proxyUrls: {
+      fred: (els.fredProxyUrlInput?.value || "").trim()
     }
   };
 }
 
 function renderDatasetStatus(dataset, helpers) {
-  const loaded = formatSeriesList(dataset.loadedSeries, dataset.seriesSourceMap, dataset.seriesObservationCounts, helpers, dataset.source || "live data");
-  const missing = formatSeriesList(dataset.missingSeries, dataset.seriesSourceMap, dataset.seriesObservationCounts, helpers, "로컬 샘플");
+  const loaded = formatSeriesList(dataset.loadedSeries, dataset.seriesSourceMap, dataset.seriesStatusMap, dataset.seriesObservationCounts, helpers, dataset.source || "live data");
+  const missing = formatSeriesList(dataset.missingSeries, dataset.seriesSourceMap, dataset.seriesStatusMap, dataset.seriesObservationCounts, helpers, "로컬 샘플");
   const totalSeries = (dataset.loadedSeries?.length || 0) + (dataset.missingSeries?.length || 0);
   const officialCount = dataset.officialSeriesCount ?? dataset.loadedSeries?.length ?? 0;
   const fallbackCount = dataset.fallbackSeriesCount ?? dataset.missingSeries?.length ?? 0;
   const corsHint = dataset.source === "FRED"
-    ? "<br>도움말: FRED는 미국 데이터 중심입니다. API key 저장 후 Network 탭에서 fred/series/observations 요청을 확인하세요. 브라우저 직접 호출이 막히면 backend proxy를 고려하세요."
+    ? `<br>도움말: FRED는 미국 데이터 중심입니다. API key 저장 후 Network 탭에서 ${dataset.proxyUsed ? "입력한 proxy 요청" : "fred/series/observations 요청"}을 확인하세요. 브라우저 직접 호출이 막히면 backend proxy를 고려하세요.`
     : "";
   const stubHint = dataset.source === "ECOS"
     ? "<br>도움말: ECOS는 현재 adapter 구조 준비 단계이며 통계코드 매핑 전까지 로컬 샘플로 보완됩니다."
@@ -214,6 +217,7 @@ function renderDatasetStatus(dataset, helpers) {
   return `
     <strong>데이터 불러오기 완료</strong><br>
     데이터 소스: ${helpers.escapeHtml(dataset.source || "local")}<br>
+    호출 방식: ${dataset.proxyUsed ? "backend proxy" : dataset.source === "FRED" ? "브라우저 직접 호출" : "기본 호출"}<br>
     공식 데이터 사용률: ${officialCount}/${totalSeries || 0}개 지표 (${helpers.percent((dataset.officialDataRatio || 0) * 100, 0)})<br>
     샘플 보완: ${fallbackCount}/${totalSeries || 0}개 지표<br>
     불러온 지표: ${loaded}<br>
@@ -234,7 +238,7 @@ function renderDataSourceStatus(context, dataset) {
   const missing = dataset.missingSeries?.length || 0;
   helpers.setHtmlIfChanged(
     els.dataSourceStatusValue,
-    `${helpers.escapeHtml(source)} · 공식 데이터 ${loaded}/${loaded + missing}개 · 샘플 보완 ${missing}개${dataset.fallbackUsed ? " · fallback 사용" : ""}${source === "FRED" ? " · FRED는 미국 데이터 중심" : ""}${source === "ECOS" ? " · 통계코드 매핑 전 단계" : ""}${source === "OECD" ? " · SDMX stub" : ""}`
+    `${helpers.escapeHtml(source)} · 공식 데이터 ${loaded}/${loaded + missing}개 · 샘플 보완 ${missing}개${dataset.fallbackUsed ? " · fallback 사용" : ""}${dataset.proxyUsed ? " · proxy 사용" : ""}${source === "FRED" ? " · FRED는 미국 데이터 중심" : ""}${source === "ECOS" ? " · 통계코드 매핑 전 단계" : ""}${source === "OECD" ? " · SDMX stub" : ""}`
   );
 }
 
@@ -248,16 +252,32 @@ function formatDatasetQualitySummary(dataset = {}, helpers) {
   return `공식 데이터 사용률: ${loaded}/${total || 0}개 지표 (${helpers.percent(ratio * 100, 0)}) / 샘플 보완 ${fallback}개 / 정렬: ${helpers.escapeHtml(alignment)} · ${helpers.escapeHtml(fill)}`;
 }
 
-function formatSeriesList(seriesKeys = [], sourceMap = {}, observationCounts = {}, helpers, fallbackSource = "") {
+function formatSeriesList(seriesKeys = [], sourceMap = {}, statusMap = {}, observationCounts = {}, helpers, fallbackSource = "") {
   if (!Array.isArray(seriesKeys) || !seriesKeys.length) return "없음";
   return seriesKeys
     .map((key) => {
       const label = macroSeriesLabels[key] || key;
       const source = sourceMap[key] || fallbackSource;
+      const statusLabel = formatSeriesStatus(statusMap, key);
       const count = Number.isFinite(Number(observationCounts[key])) ? ` · ${Number(observationCounts[key])}개` : "";
-      return `${helpers.escapeHtml(label)}(${helpers.escapeHtml(source)}${count})`;
+      return `${helpers.escapeHtml(label)}(${helpers.escapeHtml(source)}${statusLabel}${count})`;
     })
     .join(", ");
+}
+
+function formatSeriesStatus(sourceMap = {}, key) {
+  const status = sourceMap?.[key];
+  const labels = {
+    live: "",
+    live_proxy: " · proxy",
+    verified: " · 검증",
+    candidate_verified: " · 1차 매핑 후보",
+    candidate_verified_no_item: " · 1차 매핑 후보",
+    unmapped: " · 통계코드 미확정",
+    fallback: " · fallback",
+    cors_failed: " · CORS 가능 실패"
+  };
+  return labels[status] || "";
 }
 
 function formatNumber(value, helpers) {

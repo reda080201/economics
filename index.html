@@ -587,12 +587,20 @@
               ECOS API Key
               <input id="ecosApiKeyInput" type="password" placeholder="향후 ECOS 연동용">
             </label>
+            <details class="mini-details" style="margin-top: 8px;">
+              <summary>고급 API 설정</summary>
+              <label>
+                FRED proxy URL
+                <input id="fredProxyUrlInput" type="url" placeholder="선택 사항: https://example.com/fred-proxy">
+              </label>
+              <div class="selected-agent subtle">비워두면 브라우저가 FRED에 직접 요청합니다. 공개 배포에서는 API key 보호와 CORS 회피를 위해 backend proxy를 권장합니다.</div>
+            </details>
             <div class="button-grid" style="margin-top: 8px;">
               <button id="saveApiKeyBtn" class="btn secondary" type="button">API 키 저장</button>
               <button id="clearApiKeyBtn" class="btn secondary" type="button">API 키 삭제</button>
               <button id="loadLiveDataBtn" class="btn secondary" type="button">공식 데이터 불러오기</button>
             </div>
-            <div id="dataSourceStatusValue" class="selected-agent subtle">기본값은 로컬 샘플 데이터입니다. FRED는 미국 데이터 중심이며, 브라우저 호출이 막히면 샘플 데이터로 전환됩니다.</div>
+            <div id="dataSourceStatusValue" class="selected-agent subtle">기본값은 로컬 샘플 데이터입니다. FRED는 미국 데이터 중심이며, 브라우저 호출이 막히면 FRED proxy URL을 지정하거나 샘플 데이터로 전환할 수 있습니다.</div>
             <div class="button-grid" style="margin-top: 8px;">
               <button id="calibrationBtn" class="btn secondary" type="button">데이터 보정 실행</button>
               <button id="backtestBtn" class="btn secondary" type="button">과거 구간 검증</button>

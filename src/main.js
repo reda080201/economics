@@ -222,7 +222,7 @@ import {
         "balanceQuickTestBtn", "scenarioValidationBtn", "policyComparisonHorizon", "policyComparisonBtn",
         "policyComparisonSummaryValue", "policyComparisonResult", "calibrationCountrySelect",
         "dataSourceSelect", "dataStartDateInput", "dataEndDateInput", "fredApiKeyInput",
-        "ecosApiKeyInput", "saveApiKeyBtn", "clearApiKeyBtn", "loadLiveDataBtn", "dataSourceStatusValue",
+        "ecosApiKeyInput", "fredProxyUrlInput", "saveApiKeyBtn", "clearApiKeyBtn", "loadLiveDataBtn", "dataSourceStatusValue",
         "calibrationBtn", "backtestBtn", "monteCarloBtn", "accountingValidationValue",
         "modelConfidenceValue", "dataLabResult", "balanceTestResult", "scenarioValidationResult",
         "developerValidationBtn", "developerValidationResult", "debugErrorLog", "eventLog"

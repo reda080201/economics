@@ -4,10 +4,10 @@ import { ecosSeriesMap, fetchEcosSeries } from "./ecosAdapter.js";
 import { fetchOecdSeries } from "./oecdAdapter.js";
 import { alignMacroDatasetMonthly } from "./transformations.js";
 
-export async function buildLiveMacroDataset({ country = "us", provider = "local", apiKeys = {}, startDate = "2015-01", endDate = "2024-12", fallbackDataset }) {
+export async function buildLiveMacroDataset({ country = "us", provider = "local", apiKeys = {}, proxyUrls = {}, startDate = "2015-01", endDate = "2024-12", fallbackDataset }) {
   const fallback = normalizeFallbackDataset(fallbackDataset);
   if (provider === "fred") {
-    return buildFredDataset({ country, apiKey: apiKeys.fred, startDate, endDate, fallbackDataset: fallback });
+    return buildFredDataset({ country, apiKey: apiKeys.fred, proxyUrl: proxyUrls.fred, startDate, endDate, fallbackDataset: fallback });
   }
   if (provider === "ecos") {
     return buildEcosDataset({ apiKey: apiKeys.ecos, startDate, endDate, fallbackDataset: fallback });
@@ -47,6 +47,7 @@ async function buildEcosDataset({ apiKey, startDate, endDate, fallbackDataset })
     liveSeries,
     fallbackDataset,
     warnings,
+    statusMap: createProviderStatusMap("ECOS"),
     startDate,
     endDate
   });
@@ -60,9 +61,10 @@ function formatMappingHint(config = {}) {
   return ` (${config.mappingStatus})`;
 }
 
-async function buildFredDataset({ country, apiKey, startDate, endDate, fallbackDataset }) {
+async function buildFredDataset({ country, apiKey, proxyUrl, startDate, endDate, fallbackDataset }) {
   const liveSeries = {};
   const warnings = [];
+  const statusMap = {};
   if (country !== "us") {
     warnings.push("FRED 1차 연동은 미국 데이터 중심입니다. 선택 국가와 맞지 않는 지표는 로컬 샘플로 보완했습니다.");
   }
@@ -74,13 +76,17 @@ async function buildFredDataset({ country, apiKey, startDate, endDate, fallbackD
         seriesId: config.seriesId,
         startDate,
         endDate,
-        label: config.label
+        label: config.label,
+        proxyUrl
       });
+      statusMap[key] = proxyUrl ? "live_proxy" : "live";
       if (!liveSeries[key].length) {
         delete liveSeries[key];
+        statusMap[key] = "fallback";
         warnings.push(`FRED ${key} 데이터가 비어 있어 로컬 샘플로 보완했습니다.`);
       }
     } catch (error) {
+      statusMap[key] = String(error?.message || "").includes("CORS") ? "cors_failed" : "fallback";
       warnings.push(`${config.label}: ${error?.message || String(error)}`);
     }
   }));
@@ -91,6 +97,8 @@ async function buildFredDataset({ country, apiKey, startDate, endDate, fallbackD
     liveSeries,
     fallbackDataset,
     warnings,
+    statusMap,
+    proxyUsed: Boolean(String(proxyUrl || "").trim()),
     startDate,
     endDate
   });
@@ -109,12 +117,13 @@ async function buildStubFallbackDataset({ provider, fallbackDataset, loader, sta
     liveSeries: {},
     fallbackDataset,
     warnings,
+    statusMap: {},
     startDate: firstSeriesDate(fallbackDataset),
     endDate: lastSeriesDate(fallbackDataset)
   });
 }
 
-function mergeWithFallback({ providerLabel, country, liveSeries, fallbackDataset, warnings, startDate, endDate }) {
+function mergeWithFallback({ providerLabel, country, liveSeries, fallbackDataset, warnings, statusMap = {}, proxyUsed = false, startDate, endDate }) {
   const dataset = {
     ...fallbackDataset,
     country,
@@ -125,6 +134,8 @@ function mergeWithFallback({ providerLabel, country, liveSeries, fallbackDataset
     loadedSeries: [],
     missingSeries: [],
     seriesSourceMap: {},
+    seriesStatusMap: {},
+    proxyUsed,
     fallbackUsed: false
   };
 
@@ -134,10 +145,12 @@ function mergeWithFallback({ providerLabel, country, liveSeries, fallbackDataset
       dataset[key] = series;
       dataset.loadedSeries.push(key);
       dataset.seriesSourceMap[key] = providerLabel;
+      dataset.seriesStatusMap[key] = statusMap[key] || "live";
     } else {
       dataset[key] = Array.isArray(fallbackDataset[key]) ? fallbackDataset[key] : [];
       dataset.missingSeries.push(key);
       dataset.seriesSourceMap[key] = "로컬 샘플";
+      dataset.seriesStatusMap[key] = statusMap[key] || "fallback";
       dataset.fallbackUsed = true;
     }
   });
@@ -150,6 +163,15 @@ function mergeWithFallback({ providerLabel, country, liveSeries, fallbackDataset
     endDate: endDate || lastSeriesDate(dataset),
     keys: macroSeriesKeys
   }));
+}
+
+function createProviderStatusMap(providerLabel) {
+  if (providerLabel !== "ECOS") return {};
+  const statusMap = {};
+  Object.entries(ecosSeriesMap).forEach(([key, config]) => {
+    statusMap[key] = config.mappingStatus || "fallback";
+  });
+  return statusMap;
 }
 
 function normalizeFallbackDataset(fallbackDataset = {}) {
