@@ -50,7 +50,7 @@ src/
     config.js              # 공통 상수와 정책 전달 메타데이터
     stateFactory.js        # 초기 앱 상태 생성
     mathUtils.js           # 안전 수치, clamp, 평균, Gini 등 공통 유틸
-    calibration.js         # 샘플 데이터 기반 파라미터 보정과 변수별 loss 진단
+    calibration.js         # 공식/샘플 보완 데이터 기반 파라미터 보정과 변수별 loss 진단
     backtest.js            # recursive simulated path 기반 과거 구간 검증
   economy/
     sectorProfiles.js      # 산업별 민감도와 전략 helper
@@ -74,14 +74,14 @@ data/
 
 데이터 보정과 백테스트 결과에는 공식 데이터 사용률도 함께 표시됩니다. 예를 들어 FRED에서 일부 지표만 불러오고 나머지를 로컬 샘플로 보완한 경우 `공식 데이터 사용률: 6/11개 지표`, `샘플 보완 5개`, `월별 정렬 및 forward-fill 사용` 같은 메타데이터를 같이 보여줍니다.
 
-현재 기본 데이터 소스는 로컬 샘플 JSON입니다. FRED adapter는 미국 시계열 일부를 live data로 불러올 수 있고, ECOS/OECD adapter는 공식 데이터 연동을 위한 stub 상태입니다.
+현재 기본 데이터 소스는 로컬 샘플 JSON입니다. FRED adapter는 미국 시계열 일부를 live data로 불러올 수 있고, ECOS는 일부 1차 매핑 후보와 fallback을 함께 사용합니다. OECD adapter는 공식 데이터 연동을 위한 stub 상태입니다.
 
 ## 공식 데이터 API 연동
 
 데이터랩은 기본적으로 로컬 샘플 데이터를 사용하며, 선택적으로 공식 데이터 API를 실험용 보강 데이터로 불러올 수 있습니다.
 
 - FRED: 미국 거시경제 시계열 일부를 live data로 불러올 수 있습니다.
-- ECOS: 한국은행 경제통계 연동을 위한 adapter 구조만 준비되어 있으며, 실제 통계코드 매핑 전까지는 로컬 샘플로 보완됩니다.
+- ECOS: 한국은행 경제통계 연동을 위한 adapter 구조와 일부 1차 매핑 후보가 준비되어 있으며, 미확정 통계코드는 로컬 샘플로 보완됩니다.
 - OECD: 국가 비교용 SDMX adapter stub만 준비되어 있으며, 아직 실제 live 연동은 아닙니다.
 - API 키: FRED와 ECOS 키는 브라우저 `localStorage`에만 저장되며 GitHub 저장소에는 포함하지 않습니다.
 - Fallback: API key 누락, 네트워크 오류, CORS 오류, 데이터 누락이 발생하면 `data/sample_korea_macro.json` 또는 `data/sample_us_macro.json`으로 자동 전환합니다.
@@ -101,8 +101,9 @@ data/
 ## 향후 계획
 
 - `src/main.js`의 노동, 소비, 생산, 정부, 금융 로직을 `economy/` 모듈로 추가 분리
-- FRED, ECOS, OECD API adapter 구현
-- 샘플 데이터 확장 및 공식 데이터 매핑 테이블 추가
+- FRED adapter 안정화 및 backend proxy 옵션 추가
+- ECOS/OECD 실제 통계코드 매핑 및 live data 연동
+- 샘플 데이터 확장 및 공식 데이터 매핑 테이블 보강
 - SFC 회계 검증 범위를 은행·대외·자산시장 flow까지 확대
 - 백테스트 결과 차트와 모델 신뢰도 패널 고도화
 - 브라우저 기반 회귀 테스트 자동화

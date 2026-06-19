@@ -6,7 +6,7 @@ export async function runDataCalibrationMode(context) {
   if (!els.dataLabResult) return;
   try {
     els.dataLabResult.classList.add("visible");
-    helpers.setHtmlIfChanged(els.dataLabResult, "<strong>데이터 보정</strong><br>로컬 샘플 데이터를 불러오는 중...");
+    helpers.setHtmlIfChanged(els.dataLabResult, "<strong>데이터 보정</strong><br>선택한 공식/샘플 보완 데이터를 불러오는 중...");
     const dataset = await loadSelectedCalibrationDataset(context);
     const result = services.calibrateParameters({
       historicalData: dataset,
@@ -41,7 +41,7 @@ export async function runDataCalibrationMode(context) {
       신뢰도: ${helpers.escapeHtml(state.modelReliability.level)}<br>
       대상 지표: ${helpers.escapeHtml((result.targetSeries || []).join(", "))}<br>
       방식: ${helpers.escapeHtml(result.method || "recursive_model_path_search")}<br>
-      이 보정은 샘플 데이터 기반의 교육용 계수 조정입니다.
+      이 보정은 공식/샘플 보완 데이터 기반의 교육용 계수 조정입니다.
     `);
     updateModelReliabilityPanel(context);
   } catch (error) {
@@ -201,7 +201,7 @@ function renderDatasetStatus(dataset, helpers) {
   const officialCount = dataset.officialSeriesCount ?? dataset.loadedSeries?.length ?? 0;
   const fallbackCount = dataset.fallbackSeriesCount ?? dataset.missingSeries?.length ?? 0;
   const corsHint = dataset.source === "FRED"
-    ? "<br>도움말: FRED는 미국 데이터 중심입니다. 브라우저 직접 호출이 막히면 Network 탭에서 fred/series/observations 요청을 확인하고 backend proxy를 고려하세요."
+    ? "<br>도움말: FRED는 미국 데이터 중심입니다. API key 저장 후 Network 탭에서 fred/series/observations 요청을 확인하세요. 브라우저 직접 호출이 막히면 backend proxy를 고려하세요."
     : "";
   const stubHint = dataset.source === "ECOS"
     ? "<br>도움말: ECOS는 현재 adapter 구조 준비 단계이며 통계코드 매핑 전까지 로컬 샘플로 보완됩니다."

@@ -1,21 +1,23 @@
 export const ecosSeriesMap = {
-  gdp: { statCode: "TODO", cycle: "Q", itemCode1: "TODO", label: "실질 GDP" },
-  cpi: { statCode: "TODO", cycle: "M", itemCode1: "TODO", label: "소비자물가지수" },
+  // ECOS 1차 매핑: 공개 ECOS 예시와 wrapper 문서에서 반복 확인되는 코드만 live 후보로 사용합니다.
+  // 불확실한 지표는 TODO로 남겨 조용히 잘못된 공식 데이터가 섞이지 않게 합니다.
+  gdp: { statCode: "TODO", cycle: "Q", itemCode1: "TODO", label: "실질 GDP", mappingStatus: "unmapped" },
+  cpi: { statCode: "901Y009", cycle: "M", itemCode1: "0", label: "소비자물가지수", mappingStatus: "candidate_verified" },
   unemployment: { statCode: "TODO", cycle: "M", itemCode1: "TODO", label: "실업률" },
-  policyRate: { statCode: "TODO", cycle: "M", itemCode1: "TODO", label: "기준금리" }
+  policyRate: { statCode: "060Y001", cycle: "M", itemCode1: null, label: "한국은행 기준금리", mappingStatus: "candidate_verified_no_item" }
 };
 
 export async function fetchEcosSeries({ apiKey, statCode, cycle, startDate, endDate, itemCode1, label = "" } = {}) {
   const key = String(apiKey || "").trim();
   if (!key) throw new Error("ECOS API key가 없어 로컬 샘플 데이터로 전환합니다.");
-  if (!statCode || statCode === "TODO" || !itemCode1 || itemCode1 === "TODO") {
+  if (!statCode || statCode === "TODO" || itemCode1 === "TODO") {
     throw new Error("ECOS 통계코드 매핑이 아직 확정되지 않았습니다. 로컬 샘플 데이터로 전환합니다.");
   }
 
   const normalizedCycle = String(cycle || "M").toUpperCase();
   const start = normalizeEcosPeriod(startDate, normalizedCycle);
   const end = normalizeEcosPeriod(endDate, normalizedCycle);
-  const url = [
+  const urlParts = [
     "https://ecos.bok.or.kr/api/StatisticSearch",
     encodeURIComponent(key),
     "json",
@@ -25,9 +27,12 @@ export async function fetchEcosSeries({ apiKey, statCode, cycle, startDate, endD
     encodeURIComponent(statCode),
     normalizedCycle,
     start,
-    end,
-    encodeURIComponent(itemCode1)
-  ].join("/");
+    end
+  ];
+  if (itemCode1 != null && String(itemCode1).trim() !== "") {
+    urlParts.push(encodeURIComponent(itemCode1));
+  }
+  const url = urlParts.join("/");
 
   let response;
   try {

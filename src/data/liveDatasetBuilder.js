@@ -34,10 +34,10 @@ async function buildEcosDataset({ apiKey, startDate, endDate, fallbackDataset })
       });
       if (!liveSeries[key].length) {
         delete liveSeries[key];
-        warnings.push(`ECOS ${config.label} 데이터가 비어 있어 로컬 샘플로 보완했습니다.`);
+        warnings.push(`ECOS ${config.label} 데이터가 비어 있어 로컬 샘플로 보완했습니다.${formatMappingHint(config)}`);
       }
     } catch (error) {
-      warnings.push(`${config.label}: ${error?.message || String(error)}`);
+      warnings.push(`${config.label}: ${error?.message || String(error)}${formatMappingHint(config)}`);
     }
   }));
 
@@ -50,6 +50,14 @@ async function buildEcosDataset({ apiKey, startDate, endDate, fallbackDataset })
     startDate,
     endDate
   });
+}
+
+function formatMappingHint(config = {}) {
+  if (!config.mappingStatus) return "";
+  if (config.mappingStatus === "unmapped") return " (통계코드 미확정)";
+  if (config.mappingStatus === "candidate_verified_no_item") return " (1차 매핑 후보: 항목코드 없음)";
+  if (config.mappingStatus === "candidate_verified") return " (1차 매핑 후보)";
+  return ` (${config.mappingStatus})`;
 }
 
 async function buildFredDataset({ country, apiKey, startDate, endDate, fallbackDataset }) {
