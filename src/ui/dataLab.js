@@ -19,14 +19,20 @@ export async function runDataCalibrationMode(context) {
       calibrationLoss: result.loss,
       bestVariable: result.bestVariable || "확인 필요",
       weakestVariable: result.weakestVariable || "확인 필요",
-      lastDataset: dataset.label || dataset.country || "샘플"
+      lastDataset: dataset.label || dataset.country || "샘플",
+      officialDataRatio: dataset.officialDataRatio ?? 0,
+      officialSeriesCount: dataset.officialSeriesCount ?? 0,
+      fallbackSeriesCount: dataset.fallbackSeriesCount ?? 0,
+      alignmentMethod: dataset.alignmentMethod || "원본"
     };
     const scaleSummary = formatSelectedScales(result.selectedParameterScales, helpers);
     const breakdownSummary = formatVariableBreakdown(result.variableBreakdown, helpers);
+    const dataQualitySummary = formatDatasetQualitySummary(dataset, helpers);
     helpers.updateSfcAccountingLayer();
     helpers.setHtmlIfChanged(els.dataLabResult, `
       <strong>데이터 보정 완료</strong><br>
       데이터: ${helpers.escapeHtml(state.modelReliability.lastDataset)}<br>
+      ${dataQualitySummary}<br>
       기본 손실: ${formatNumber(result.baselineLoss, helpers)} / 보정 후 손실: ${formatNumber(result.loss, helpers)}<br>
       개선률: ${helpers.percent((result.improvementRate || 0) * 100, 1)} / 후보 ${result.candidatesTested}개<br>
       가장 잘 맞는 변수: ${helpers.escapeHtml(result.bestVariable || "확인 필요")} / 가장 안 맞는 변수: ${helpers.escapeHtml(result.weakestVariable || "확인 필요")}<br>
@@ -104,12 +110,19 @@ export async function runBacktestMode(context) {
       backtestDirectionHitRate: directionHit,
       recentError: result.averageRmse,
       level: directionHit > 0.68 ? "높음" : directionHit > 0.55 ? "중간" : "낮음",
-      lastDataset: dataset.label || dataset.country || "샘플"
+      lastDataset: dataset.label || dataset.country || "샘플",
+      officialDataRatio: dataset.officialDataRatio ?? 0,
+      officialSeriesCount: dataset.officialSeriesCount ?? 0,
+      fallbackSeriesCount: dataset.fallbackSeriesCount ?? 0,
+      alignmentMethod: dataset.alignmentMethod || "원본"
     };
+    const dataQualitySummary = formatDatasetQualitySummary(dataset, helpers);
     helpers.updateSfcAccountingLayer();
     els.dataLabResult.classList.add("visible");
     helpers.setHtmlIfChanged(els.dataLabResult, `
       <strong>과거 구간 검증</strong><br>
+      데이터: ${helpers.escapeHtml(state.modelReliability.lastDataset)}<br>
+      ${dataQualitySummary}<br>
       GDP 방향 적중률: ${helpers.percent(result.gdpDirectionHitRate * 100, 0)}<br>
       물가 방향 적중률: ${helpers.percent(result.inflationDirectionHitRate * 100, 0)}<br>
       실업률 방향 적중률: ${helpers.percent(result.unemploymentDirectionHitRate * 100, 0)}<br>
@@ -190,6 +203,11 @@ function renderDatasetStatus(dataset, helpers) {
   const corsHint = dataset.source === "FRED"
     ? "<br>도움말: FRED는 미국 데이터 중심입니다. 브라우저 직접 호출이 막히면 Network 탭에서 fred/series/observations 요청을 확인하고 backend proxy를 고려하세요."
     : "";
+  const stubHint = dataset.source === "ECOS"
+    ? "<br>도움말: ECOS는 현재 adapter 구조 준비 단계이며 통계코드 매핑 전까지 로컬 샘플로 보완됩니다."
+    : dataset.source === "OECD"
+      ? "<br>도움말: OECD는 현재 SDMX adapter stub 단계이며 로컬 샘플로 보완됩니다."
+      : "";
   const warnings = dataset.warnings?.length
     ? `<br>경고: ${helpers.escapeHtml(dataset.warnings.slice(0, 3).join(" / "))}`
     : "";
@@ -203,6 +221,7 @@ function renderDatasetStatus(dataset, helpers) {
     정렬 방식: ${helpers.escapeHtml(dataset.alignmentMethod || "원본")} / 보완 방식: ${dataset.fallbackUsed ? "로컬 샘플 fallback" : "live data"}<br>
     마지막 업데이트: ${helpers.escapeHtml(dataset.updatedAt || "로컬 샘플")}
     ${corsHint}
+    ${stubHint}
     ${warnings}
   `;
 }
@@ -215,8 +234,18 @@ function renderDataSourceStatus(context, dataset) {
   const missing = dataset.missingSeries?.length || 0;
   helpers.setHtmlIfChanged(
     els.dataSourceStatusValue,
-    `${helpers.escapeHtml(source)} · 공식 데이터 ${loaded}/${loaded + missing}개 · 샘플 보완 ${missing}개${dataset.fallbackUsed ? " · fallback 사용" : ""}${source === "FRED" ? " · FRED는 미국 데이터 중심" : ""}`
+    `${helpers.escapeHtml(source)} · 공식 데이터 ${loaded}/${loaded + missing}개 · 샘플 보완 ${missing}개${dataset.fallbackUsed ? " · fallback 사용" : ""}${source === "FRED" ? " · FRED는 미국 데이터 중심" : ""}${source === "ECOS" ? " · 통계코드 매핑 전 단계" : ""}${source === "OECD" ? " · SDMX stub" : ""}`
   );
+}
+
+function formatDatasetQualitySummary(dataset = {}, helpers) {
+  const loaded = dataset.officialSeriesCount ?? dataset.loadedSeries?.length ?? 0;
+  const fallback = dataset.fallbackSeriesCount ?? dataset.missingSeries?.length ?? 0;
+  const total = loaded + fallback || dataset.loadedSeries?.length + dataset.missingSeries?.length || 0;
+  const ratio = dataset.officialDataRatio ?? (total ? loaded / total : 0);
+  const alignment = dataset.alignmentMethod || "원본";
+  const fill = alignment.includes("forward") ? "forward-fill 사용" : dataset.fallbackUsed ? "샘플 fallback 사용" : "추가 보완 없음";
+  return `공식 데이터 사용률: ${loaded}/${total || 0}개 지표 (${helpers.percent(ratio * 100, 0)}) / 샘플 보완 ${fallback}개 / 정렬: ${helpers.escapeHtml(alignment)} · ${helpers.escapeHtml(fill)}`;
 }
 
 function formatSeriesList(seriesKeys = [], sourceMap = {}, observationCounts = {}, helpers, fallbackSource = "") {

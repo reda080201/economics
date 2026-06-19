@@ -10,7 +10,7 @@
 
 ![Agent Macro Lab screenshot](./docs/screenshot-placeholder.svg)
 
-현재 이미지는 임시 placeholder입니다. 실제 실행 화면 캡처는 `docs/screenshot.png`로 교체할 예정입니다.
+현재 이미지는 임시 placeholder입니다. 실제 실행 화면 캡처는 로컬 앱을 실행한 뒤 `docs/screenshot.png`로 교체할 예정입니다. 이 작업 환경에서는 브라우저 보안 정책이 `127.0.0.1` 접근을 차단해 자동 캡처를 만들 수 없었습니다.
 
 ## 실행 방법
 
@@ -72,6 +72,8 @@ data/
 
 백테스트와 캘리브레이션은 실제값을 그대로 복사하지 않고, 첫 관측값에서 시작해 공통 response function과 과거 외생 변수로 recursive simulated path를 만든 뒤 실제 데이터와 비교합니다. 캘리브레이션 결과는 기본 loss, 보정 후 loss, 개선률, 선택된 파라미터 배율, GDP/물가/실업률별 적합도를 함께 표시합니다.
 
+데이터 보정과 백테스트 결과에는 공식 데이터 사용률도 함께 표시됩니다. 예를 들어 FRED에서 일부 지표만 불러오고 나머지를 로컬 샘플로 보완한 경우 `공식 데이터 사용률: 6/11개 지표`, `샘플 보완 5개`, `월별 정렬 및 forward-fill 사용` 같은 메타데이터를 같이 보여줍니다.
+
 현재 기본 데이터 소스는 로컬 샘플 JSON입니다. FRED adapter는 미국 시계열 일부를 live data로 불러올 수 있고, ECOS/OECD adapter는 공식 데이터 연동을 위한 stub 상태입니다.
 
 ## 공식 데이터 API 연동
@@ -79,13 +81,14 @@ data/
 데이터랩은 기본적으로 로컬 샘플 데이터를 사용하며, 선택적으로 공식 데이터 API를 실험용 보강 데이터로 불러올 수 있습니다.
 
 - FRED: 미국 거시경제 시계열 일부를 live data로 불러올 수 있습니다.
-- ECOS: 한국은행 경제통계 연동을 위한 adapter 구조만 준비되어 있습니다.
-- OECD: 국가 비교용 SDMX 연동을 위한 adapter 구조만 준비되어 있습니다.
+- ECOS: 한국은행 경제통계 연동을 위한 adapter 구조만 준비되어 있으며, 실제 통계코드 매핑 전까지는 로컬 샘플로 보완됩니다.
+- OECD: 국가 비교용 SDMX adapter stub만 준비되어 있으며, 아직 실제 live 연동은 아닙니다.
 - API 키: FRED와 ECOS 키는 브라우저 `localStorage`에만 저장되며 GitHub 저장소에는 포함하지 않습니다.
 - Fallback: API key 누락, 네트워크 오류, CORS 오류, 데이터 누락이 발생하면 `data/sample_korea_macro.json` 또는 `data/sample_us_macro.json`으로 자동 전환합니다.
 - 데이터 정렬: FRED live data는 월별 날짜 범위로 정렬하며, GDP·정부부채처럼 분기 관측이 섞인 지표는 이전 관측값을 forward-fill해 캘리브레이션 입력 길이를 맞춥니다.
 - 공개 배포: 실제 서비스 환경에서는 브라우저 직접 호출보다 backend proxy 사용을 권장합니다.
 - FRED 수동 확인: API key 입력 → 저장 → 데이터 소스 `FRED live data` 선택 → 공식 데이터 불러오기 → 브라우저 Network 탭에서 `fred/series/observations` 요청과 불러온 지표 수를 확인합니다.
+- FRED 성공 기준: 데이터랩에 `불러온 지표`가 1개 이상 표시되고, 각 지표 옆에 `FRED · 관측 개수`가 표시됩니다. 실패하거나 일부 누락되면 `샘플로 보완된 지표`와 fallback 경고가 함께 표시됩니다.
 
 ## 한계
 
