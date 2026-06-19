@@ -89,6 +89,27 @@ data/
 - 공개 배포: 실제 서비스 환경에서는 브라우저 직접 호출보다 backend proxy 사용을 권장합니다. 데이터랩의 고급 API 설정에서 FRED proxy URL을 지정하면 브라우저가 FRED 원본 API 대신 해당 endpoint를 호출합니다.
 - FRED 수동 확인: API key 입력 → 저장 → 데이터 소스 `FRED live data` 선택 → 공식 데이터 불러오기 → 브라우저 Network 탭에서 `fred/series/observations` 요청과 불러온 지표 수를 확인합니다.
 - FRED 성공 기준: 데이터랩에 `불러온 지표`가 1개 이상 표시되고, 각 지표 옆에 `FRED · 관측 개수`가 표시됩니다. 실패하거나 일부 누락되면 `샘플로 보완된 지표`와 fallback 경고가 함께 표시됩니다.
+- FRED proxy 예시: `examples/fred-proxy/`는 선택적으로 사용할 수 있는 최소 Node proxy입니다. 정적 앱 서버와 별도로 실행하며, `FRED_API_KEY`를 서버 환경변수로 보관합니다.
+- 데이터 매핑 현황: `docs/data-source-mapping.md`에서 FRED/ECOS/OECD 지표별 live, 후보, fallback, stub 상태를 추적합니다.
+
+### FRED proxy 예시
+
+```powershell
+$env:FRED_API_KEY="your-fred-api-key"
+node examples/fred-proxy/server.js
+```
+
+앱의 `고급 API 설정`에서 FRED proxy URL을 다음처럼 입력합니다.
+
+```text
+http://127.0.0.1:8789/api/fred
+```
+
+이 경우 브라우저는 FRED 원본 API가 아니라 proxy endpoint를 호출합니다. 운영 배포에서는 origin 제한, rate limit, HTTPS, 서버 측 secret 관리를 추가하세요.
+
+### 실제 스크린샷 교체
+
+브라우저 접근이 가능한 환경에서는 앱을 실행한 뒤 첫 화면을 캡처해 `docs/screenshot.png`로 저장하고, README 이미지 경로를 `./docs/screenshot.png`로 바꾸면 됩니다. 현재 저장소에는 자동 캡처가 막히는 환경을 고려해 `docs/screenshot-placeholder.svg`를 fallback으로 유지합니다.
 
 ## 한계
 
@@ -101,7 +122,7 @@ data/
 ## 향후 계획
 
 - `src/main.js`의 노동, 소비, 생산, 정부, 금융 로직을 `economy/` 모듈로 추가 분리
-- FRED backend proxy endpoint 예시와 배포 가이드 추가
+- FRED backend proxy 배포 가이드와 보안 옵션 보강
 - ECOS/OECD 실제 통계코드 매핑 및 live data 연동
 - 샘플 데이터 확장 및 공식 데이터 매핑 테이블 보강
 - SFC 회계 검증 범위를 은행·대외·자산시장 flow까지 확대
