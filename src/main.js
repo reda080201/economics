@@ -79,6 +79,7 @@ import {
   saveDataApiKeys as saveDataApiKeysPanel,
   updateModelReliabilityPanel as updateModelReliabilityPanelView
 } from "./ui/dataLab.js";
+import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquidityRadar.js";
 
 "use strict";
 
@@ -225,6 +226,8 @@ import {
         "ecosApiKeyInput", "fredProxyUrlInput", "saveApiKeyBtn", "clearApiKeyBtn", "loadLiveDataBtn", "dataSourceStatusValue",
         "calibrationBtn", "backtestBtn", "monteCarloBtn", "accountingValidationValue",
         "modelConfidenceValue", "dataLabResult", "balanceTestResult", "scenarioValidationResult",
+        "liquidityRadarBtn", "liquidityRadarStatusValue", "liquidityScoreValue", "liquidityRegimeValue",
+        "fedNetLiquidityValue", "liquiditySubScoreValue", "liquiditySeriesTableValue", "liquidityRadarResult",
         "developerValidationBtn", "developerValidationResult", "debugErrorLog", "eventLog"
       ]);
     }
@@ -391,6 +394,7 @@ import {
       safeOn(els.calibrationBtn, "click", runDataCalibrationMode, "calibrationBtn");
       safeOn(els.backtestBtn, "click", runBacktestMode, "backtestBtn");
       safeOn(els.monteCarloBtn, "click", runMonteCarloMode, "monteCarloBtn");
+      safeOn(els.liquidityRadarBtn, "click", runLiquidityRadarMode, "liquidityRadarBtn");
       safeOn(els.developerValidationBtn, "click", runDeveloperValidationMode, "developerValidationBtn");
       renderModelInputs();
       runSelectedEconomicModel();
@@ -9994,6 +9998,10 @@ import {
       return runMonteCarloModePanel(createDataLabContext());
     }
 
+    async function runLiquidityRadarMode() {
+      return runLiquidityRadarModePanel(createLiquidityRadarContext());
+    }
+
     function updateModelReliabilityPanel() {
       return updateModelReliabilityPanelView(createDataLabContext());
     }
@@ -10019,6 +10027,19 @@ import {
           round,
           setHtmlIfChanged,
           updateSfcAccountingLayer
+        }
+      };
+    }
+
+    function createLiquidityRadarContext() {
+      return {
+        els,
+        state,
+        helpers: {
+          escapeHtml,
+          recordRuntimeError,
+          round,
+          setHtmlIfChanged
         }
       };
     }

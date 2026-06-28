@@ -612,6 +612,21 @@
             </ul>
             <div id="dataLabResult" class="balance-test-result">로컬 샘플 데이터로 보정·백테스트·몬테카를로 분석을 실행할 수 있습니다.</div>
           </details>
+          <details class="section">
+            <summary>Liquidity Radar</summary>
+            <div id="liquidityRadarStatusValue" class="selected-agent subtle">FRED live/fallback 데이터로 현금·신용·자산시장 유동성 신호를 관측합니다.</div>
+            <div class="button-grid" style="margin-top: 8px;">
+              <button id="liquidityRadarBtn" class="btn secondary full" type="button">유동성 레이더 실행</button>
+            </div>
+            <ul class="metric-list compact" style="margin-top: 8px;">
+              <li><span>Liquidity Score</span><strong id="liquidityScoreValue">대기</strong></li>
+              <li><span>Regime</span><strong id="liquidityRegimeValue">대기</strong></li>
+              <li><span>Fed 순유동성</span><strong id="fedNetLiquidityValue">대기</strong></li>
+              <li><span>하위 점수</span><strong id="liquiditySubScoreValue">현금·신용·자산</strong></li>
+            </ul>
+            <div id="liquidityRadarResult" class="balance-test-result">FRED API key가 없거나 호출이 실패해도 로컬 fallback series로 교육용 관측 결과를 표시합니다.</div>
+            <div id="liquiditySeriesTableValue" class="balance-test-result">세부 series는 실행 후 표시됩니다.</div>
+          </details>
           <div id="balanceTestResult" class="balance-test-result"></div>
           <div id="scenarioValidationResult" class="balance-test-result"></div>
         </div>

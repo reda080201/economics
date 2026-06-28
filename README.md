@@ -18,7 +18,7 @@ ES modules를 사용하므로 로컬 정적 서버에서 실행하는 것을 권
 
 ```powershell
 git clone <repository-url>
-cd economic
+cd economics
 python -m http.server 8788
 ```
 
@@ -37,6 +37,7 @@ http://127.0.0.1:8788/index.html
 - 시나리오: 안정 성장, 고금리 긴축, 원자재 충격, 금융불안, 역사형 시나리오
 - 분석 도구: 정책 비교, 원인 분해, 조기경보등, 120개월 빠른 테스트
 - 데이터 보정: recursive response function 기반 캘리브레이션, 변수별 적합도 진단, 백테스트, 몬테카를로 불확실성 분석
+- Liquidity Radar: FRED live/fallback 데이터로 현금 유동성, 신용 유동성, 자산시장 유동성 관측
 - SFC 보조 레이어: 부문별 balance sheet와 flow ledger, 회계 일관성 검증
 
 ## 모델 구조
@@ -57,10 +58,12 @@ src/
     accountingAdapter.js   # SFC 보조 회계 레이어 연결
     responseFunctions.js   # 단순화된 거시 반응식
   data/                    # 로컬 데이터 adapter와 변환 함수
+  liquidity/               # FRED 유동성 series, 점수, regime 분류
   scenarios/               # 시나리오 선택 데이터
   ui/
     controls.js            # 시나리오 select hydration
     dataLab.js             # 데이터 보정, 백테스트, 몬테카를로 UI
+    liquidityRadar.js      # Liquidity Radar UI
 data/
   sample_korea_macro.json
   sample_us_macro.json
@@ -76,6 +79,16 @@ data/
 
 현재 기본 데이터 소스는 로컬 샘플 JSON입니다. FRED adapter는 미국 시계열 일부를 live data로 불러올 수 있고, ECOS는 일부 1차 매핑 후보와 fallback을 함께 사용합니다. OECD adapter는 공식 데이터 연동을 위한 stub 상태입니다.
 
+## Liquidity Radar
+
+Liquidity Radar는 기존 시뮬레이션 결과를 바꾸지 않는 읽기 전용 관측 패널입니다. FRED live data 또는 로컬 fallback series를 사용해 거대 현금 유동성, 신용 유동성, 자산시장 유동성을 요약합니다.
+
+사용 series는 `WALCL`, `WTREGEN`, `RRPONTSYD`, `M2SL`, `DPSACBW027SBOG`, `MMMFFAQ027S`, `BAMLH0A0HYM2`, `BAMLC0A4CBBB`, `CSUSHPISA`, `SP500`, `DTWEXBGS`입니다.
+
+계산 항목은 최신값, 1/3/6개월 변화율, z-score, drawdown, `Fed Net Liquidity = WALCL - WTREGEN - RRPONTSYD`, Liquidity Score, Regime 분류입니다. Regime은 `Risk-On`, `Cash Parking`, `Credit Stress`, `Liquidity Drain`, `Mixed / Unclear` 중 하나로 표시합니다.
+
+이 패널은 관측 신호와 교육용 해석만 제공합니다. 투자 추천, 매수/매도 판단, 시장 예측으로 사용하지 마세요.
+
 ## 공식 데이터 API 연동
 
 데이터랩은 기본적으로 로컬 샘플 데이터를 사용하며, 선택적으로 공식 데이터 API를 실험용 보강 데이터로 불러올 수 있습니다.
@@ -87,8 +100,9 @@ data/
 - Fallback: API key 누락, 네트워크 오류, CORS 오류, 데이터 누락이 발생하면 `data/sample_korea_macro.json` 또는 `data/sample_us_macro.json`으로 자동 전환합니다.
 - 데이터 정렬: FRED live data는 월별 날짜 범위로 정렬하며, GDP·정부부채처럼 분기 관측이 섞인 지표는 이전 관측값을 forward-fill해 캘리브레이션 입력 길이를 맞춥니다.
 - 공개 배포: 실제 서비스 환경에서는 브라우저 직접 호출보다 backend proxy 사용을 권장합니다. 데이터랩의 고급 API 설정에서 FRED proxy URL을 지정하면 브라우저가 FRED 원본 API 대신 해당 endpoint를 호출합니다.
-- FRED 수동 확인: API key 입력 → 저장 → 데이터 소스 `FRED live data` 선택 → 공식 데이터 불러오기 → 브라우저 Network 탭에서 `fred/series/observations` 요청과 불러온 지표 수를 확인합니다.
+- FRED 수동 확인: API key 입력 → 저장 → 데이터 소스 `FRED live data` 선택 → 공식 데이터 불러오기 → 브라우저 Network 탭에서 `fred/series/observations` 요청 또는 proxy endpoint 요청을 확인합니다.
 - FRED 성공 기준: 데이터랩에 `불러온 지표`가 1개 이상 표시되고, 각 지표 옆에 `FRED · 관측 개수`가 표시됩니다. 실패하거나 일부 누락되면 `샘플로 보완된 지표`와 fallback 경고가 함께 표시됩니다.
+- FRED 실패 점검 순서: API key 유효성 → 브라우저 CORS/네트워크 차단 → 요청 한도 → proxy URL 설정 순서로 확인합니다.
 - FRED proxy 예시: `examples/fred-proxy/`는 선택적으로 사용할 수 있는 최소 Node proxy입니다. 정적 앱 서버와 별도로 실행하며, `FRED_API_KEY`를 서버 환경변수로 보관합니다.
 - 데이터 매핑 현황: `docs/data-source-mapping.md`에서 FRED/ECOS/OECD 지표별 live, 후보, fallback, stub 상태를 추적합니다.
 
@@ -122,8 +136,9 @@ http://127.0.0.1:8789/api/fred
 ## 향후 계획
 
 - `src/main.js`의 노동, 소비, 생산, 정부, 금융 로직을 `economy/` 모듈로 추가 분리
-- FRED backend proxy 배포 가이드와 보안 옵션 보강
-- ECOS/OECD 실제 통계코드 매핑 및 live data 연동
+- FRED adapter 안정화 및 backend proxy 배포/보안 옵션 보강
+- ECOS 실제 통계코드 매핑과 한국 공식 데이터 live 연동 확대
+- OECD SDMX adapter stub을 실제 국가 비교용 live adapter로 확장
 - 샘플 데이터 확장 및 공식 데이터 매핑 테이블 보강
 - SFC 회계 검증 범위를 은행·대외·자산시장 flow까지 확대
 - 백테스트 결과 차트와 모델 신뢰도 패널 고도화
