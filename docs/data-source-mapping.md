@@ -13,41 +13,41 @@
 
 ## FRED
 
-| series key | label | FRED series | status | 검증 메모 |
-|---|---|---:|---|---|
-| gdp | GDP | GDPC1 | live | 미국 실질 GDP, 분기 관측은 월별 forward-fill |
-| cpi | 소비자물가지수 | CPIAUCSL | live | 미국 CPI |
-| unemployment | 실업률 | UNRATE | live | 미국 실업률 |
-| policyRate | 정책금리 | FEDFUNDS | live | Federal Funds Rate |
-| governmentDebt | 정부부채 | GFDEGDQ188S | live | GDP 대비 연방정부 부채 |
-| housePriceIndex | 주택가격 | CSUSHPISA | live | Case-Shiller 지수 |
-| stockIndex | 주가지수 | SP500 | live | S&P 500 |
-| exchangeRate | 환율 | DTWEXBGS | live | Trade weighted dollar index |
-| householdDebt | 가계부채 | - | fallback | FRED 매핑 미정 |
-| exports | 수출 | - | fallback | FRED 매핑 미정 |
-| imports | 수입 | - | fallback | FRED 매핑 미정 |
+| series key | label | FRED series | status | 검증일 | 검증자 | live 결과 | 검증 메모 |
+|---|---|---:|---|---|---|---|---|
+| gdp | GDP | GDPC1 | live | 미검증 | 수동 확인 필요 | 대기 | 미국 실질 GDP, 분기 관측은 월별 forward-fill |
+| cpi | 소비자물가지수 | CPIAUCSL | live | 미검증 | 수동 확인 필요 | 대기 | 미국 CPI |
+| unemployment | 실업률 | UNRATE | live | 미검증 | 수동 확인 필요 | 대기 | 미국 실업률 |
+| policyRate | 정책금리 | FEDFUNDS | live | 미검증 | 수동 확인 필요 | 대기 | Federal Funds Rate |
+| governmentDebt | 정부부채 | GFDEGDQ188S | live | 미검증 | 수동 확인 필요 | 대기 | GDP 대비 연방정부 부채 |
+| housePriceIndex | 주택가격 | CSUSHPISA | live | 미검증 | 수동 확인 필요 | 대기 | Case-Shiller 지수 |
+| stockIndex | 주가지수 | SP500 | live | 미검증 | 수동 확인 필요 | 대기 | S&P 500 |
+| exchangeRate | 환율 | DTWEXBGS | live | 미검증 | 수동 확인 필요 | 대기 | Trade weighted dollar index |
+| householdDebt | 가계부채 | - | fallback | 해당 없음 | - | fallback | FRED 매핑 미정 |
+| exports | 수출 | - | fallback | 해당 없음 | - | fallback | FRED 매핑 미정 |
+| imports | 수입 | - | fallback | 해당 없음 | - | fallback | FRED 매핑 미정 |
 
 ## ECOS
 
-| series key | label | statCode | itemCode1 | status | 검증 메모 |
-|---|---|---:|---:|---|---|
-| cpi | 소비자물가지수 | 901Y009 | 0 | candidate_verified | 1차 매핑 후보, 실제 API key 기반 검증 필요 |
-| policyRate | 한국은행 기준금리 | 060Y001 | - | candidate_verified_no_item | 항목코드 없이 호출하는 1차 후보, 실제 API key 기반 검증 필요 |
-| gdp | 실질 GDP | TODO | TODO | unmapped | 공식 통계표/항목코드 확인 전까지 fallback |
-| unemployment | 실업률 | TODO | TODO | unmapped | ECOS보다 KOSIS 성격이 강해 별도 검토 필요 |
-| governmentDebt | 정부부채 | - | - | fallback | 미매핑 |
-| householdDebt | 가계부채 | - | - | fallback | 미매핑 |
-| housePriceIndex | 주택가격 | - | - | fallback | 미매핑 |
-| stockIndex | 주가지수 | - | - | fallback | 미매핑 |
-| exchangeRate | 환율 | - | - | fallback | 미매핑 |
-| exports | 수출 | - | - | fallback | 미매핑 |
-| imports | 수입 | - | - | fallback | 미매핑 |
+| series key | label | statCode | itemCode1 | status | 검증일 | 검증자 | live 결과 | 검증 메모 |
+|---|---|---:|---:|---|---|---|---|---|
+| cpi | 소비자물가지수 | 901Y009 | 0 | candidate_verified | 미검증 | 수동 확인 필요 | 대기 | 1차 매핑 후보, 실제 API key 기반 검증 필요 |
+| policyRate | 한국은행 기준금리 | 060Y001 | - | candidate_verified_no_item | 미검증 | 수동 확인 필요 | 대기 | 항목코드 없이 호출하는 1차 후보, 실제 API key 기반 검증 필요 |
+| gdp | 실질 GDP | TODO | TODO | unmapped | 해당 없음 | - | fallback | 공식 통계표/항목코드 확인 전까지 fallback |
+| unemployment | 실업률 | TODO | TODO | unmapped | 해당 없음 | - | fallback | ECOS보다 KOSIS 성격이 강해 별도 검토 필요 |
+| governmentDebt | 정부부채 | - | - | fallback | 해당 없음 | - | fallback | 미매핑 |
+| householdDebt | 가계부채 | - | - | fallback | 해당 없음 | - | fallback | 미매핑 |
+| housePriceIndex | 주택가격 | - | - | fallback | 해당 없음 | - | fallback | 미매핑 |
+| stockIndex | 주가지수 | - | - | fallback | 해당 없음 | - | fallback | 미매핑 |
+| exchangeRate | 환율 | - | - | fallback | 해당 없음 | - | fallback | 미매핑 |
+| exports | 수출 | - | - | fallback | 해당 없음 | - | fallback | 미매핑 |
+| imports | 수입 | - | - | fallback | 해당 없음 | - | fallback | 미매핑 |
 
 ## OECD
 
-| series key | label | status | 검증 메모 |
-|---|---|---|---|
-| all | OECD SDMX | stub | SDMX 매핑 전 단계. 현재 호출 시 로컬 샘플 fallback |
+| series key | label | status | 검증일 | 검증자 | live 결과 | 검증 메모 |
+|---|---|---|---|---|---|---|
+| all | OECD SDMX | stub | 해당 없음 | - | fallback | SDMX 매핑 전 단계. 현재 호출 시 로컬 샘플 fallback |
 
 ## 다음 작업
 

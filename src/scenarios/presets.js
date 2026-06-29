@@ -3,7 +3,7 @@ export const scenarioSelectGroups = [
     label: "기본 캘리브레이션",
     options: [
       ["baseline", "균형 성장 기본값"],
-      ["stableGrowth", "안정 성장"],
+      ["stableGrowth", "안정 성장 · 추천"],
       ["highRateTightening", "고금리 긴축"],
       ["lowRateLongRun", "저금리 장기화"],
       ["stagflation", "스태그플레이션"]

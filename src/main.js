@@ -41,6 +41,16 @@ import {
   sum,
   unique
 } from "./core/mathUtils.js";
+import {
+  capacityLabel,
+  creditRatingLabelFromScore,
+  creditRatingScore,
+  giniCoefficient,
+  mostFrequent,
+  riskLabel,
+  sectorLabel,
+  sentimentLabel
+} from "./core/formatUtils.js";
 import { createInitialAppState } from "./core/stateFactory.js";
 import {
   captureCoreStateSignature as captureCoreStateSignatureRuntime,
@@ -51,6 +61,20 @@ import {
 import { calibrateParameters } from "./core/calibration.js";
 import { runBacktest } from "./core/backtest.js";
 import { runMonteCarloScenario } from "./core/monteCarlo.js";
+import {
+  createInitialCausalDecomposition,
+  computeCausalPressureScores as computeCausalPressureScoresAnalysis,
+  updateCausalDecomposition as updateCausalDecompositionAnalysis
+} from "./analysis/causalDecomposition.js";
+import {
+  createInitialEarlyWarning,
+  earlyWarningReasonLabel as earlyWarningReasonLabelAnalysis,
+  updateEarlyWarningSystem as updateEarlyWarningSystemAnalysis
+} from "./analysis/earlyWarning.js";
+import {
+  createInitialMarketOutcome,
+  computeMarketOutcome as computeMarketOutcomeAnalysis
+} from "./analysis/marketOutcome.js";
 import { loadCalibrationDataset } from "./data/calibrationDataset.js";
 import {
   recordLedgerFlowFromUiFlow,
@@ -68,6 +92,18 @@ import {
   calculateInvestment,
   calculateUnemploymentChange
 } from "./economy/responseFunctions.js";
+import {
+  fireConsumer as fireConsumerEngine,
+  fireShareOfWorkers as fireShareOfWorkersEngine,
+  hireConsumer as hireConsumerEngine,
+  payWages as payWagesEngine,
+  updateLaborMarket as updateLaborMarketEngine
+} from "./economy/laborMarket.js";
+import {
+  adjustProducerPricesAndExpectations as adjustProducerPricesAndExpectationsEngine,
+  computePriceChange as computePriceChangeEngine,
+  produceGoods as produceGoodsEngine
+} from "./economy/production.js";
 import { scenarioSelectGroups } from "./scenarios/presets.js";
 import { hydrateScenarioSelect } from "./ui/controls.js";
 import {
@@ -98,6 +134,7 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
       setupEvents();
       enhanceControlPanel();
       enhanceDetailedMetricsPanel();
+      enhanceInspectorHierarchy();
       updateControlLabels();
       resetSimulation();
       requestAnimationFrame(animationLoop);
@@ -134,6 +171,7 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
     function cacheKpiElements() {
       cacheElementIds([
         "calendarValue", "phaseValue", "scoreValue", "bestScoreValue", "feedbackBanners",
+        "macroFocusLineValue",
         "gdpValue", "outputValue", "consumptionValue", "investmentValue", "unemploymentValue",
         "employmentValue", "priceValue", "inflationValue", "rateValue", "balanceValue",
         "debtValue", "householdCashValue", "confidenceValue", "firmCashValue", "inventoryValue",
@@ -427,10 +465,12 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
       panel.dataset.collapsibleReady = "true";
 
       const buttonGrid = els.startBtn.closest(".button-grid");
+      const scenarioGroup = els.scenarioSelect.closest(".control-group");
       const sections = [
-        { title: "실행", open: true, nodes: [buttonGrid, els.speedSlider.closest(".control-group")] },
-        { title: "정책", open: true, nodes: [els.interestSlider.closest(".control-group"), els.taxSlider.closest(".control-group"), els.corporateTaxSlider.closest(".control-group"), els.spendingSlider.closest(".control-group")] },
-        { title: "고급 설정", open: false, nodes: [els.performanceModeSelect.closest(".control-group"), els.gameModeSelect.closest(".control-group"), els.shockBtn, els.consumerSlider.closest(".control-group"), els.producerSlider.closest(".control-group"), els.vatSlider.closest(".control-group"), els.wageSlider.closest(".control-group"), els.inflationSlider.closest(".control-group"), els.scenarioSelect.closest(".control-group")] }
+        { title: "1. 실행", open: true, nodes: [buttonGrid] },
+        { title: "2. 시나리오", open: true, nodes: [els.gameModeSelect.closest(".control-group"), scenarioGroup] },
+        { title: "3. 핵심 정책", open: true, nodes: [els.interestSlider.closest(".control-group"), els.spendingSlider.closest(".control-group"), els.taxSlider.closest(".control-group"), els.corporateTaxSlider.closest(".control-group"), els.vatSlider.closest(".control-group")] },
+        { title: "고급 설정", open: false, nodes: [els.speedSlider.closest(".control-group"), els.performanceModeSelect.closest(".control-group"), els.shockBtn, els.historicalScenarioBtn, els.autoPolicyToggle?.closest(".toggle-row") || els.autoPolicyToggle, els.randomPolicyEventsToggle?.closest(".toggle-row") || els.randomPolicyEventsToggle, els.consumerSlider.closest(".control-group"), els.producerSlider.closest(".control-group"), els.wageSlider.closest(".control-group"), els.inflationSlider.closest(".control-group")] }
       ];
 
       sections.forEach((section) => {
@@ -482,13 +522,51 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
         summary.textContent = group.title;
         const groupList = document.createElement("ul");
         groupList.className = "metric-list compact";
-        group.items.forEach((item) => groupList.appendChild(item));
+        const primaryItems = group.items.slice(0, 8);
+        const secondaryItems = group.items.slice(8);
+        primaryItems.forEach((item) => groupList.appendChild(item));
         groupDetails.appendChild(summary);
         groupDetails.appendChild(groupList);
+        if (secondaryItems.length) {
+          const moreDetails = document.createElement("details");
+          moreDetails.className = "mini-details";
+          const moreSummary = document.createElement("summary");
+          moreSummary.textContent = `보조 지표 더 보기 (${secondaryItems.length})`;
+          const moreList = document.createElement("ul");
+          moreList.className = "metric-list compact";
+          secondaryItems.forEach((item) => moreList.appendChild(item));
+          moreDetails.appendChild(moreSummary);
+          moreDetails.appendChild(moreList);
+          groupDetails.appendChild(moreDetails);
+        }
         wrapper.appendChild(groupDetails);
       });
 
       list.replaceWith(wrapper);
+    }
+
+    function enhanceInspectorHierarchy() {
+      const inspector = document.querySelector(".inspector");
+      if (!inspector || inspector.dataset.hierarchyReady === "true") return;
+      inspector.dataset.hierarchyReady = "true";
+      const title = inspector.querySelector(":scope > .panel-title");
+      const sectionByHeading = (text) => Array.from(inspector.children)
+        .find((node) => node.querySelector?.("h3")?.textContent.trim() === text);
+      const detailsBySummary = (text) => Array.from(inspector.children)
+        .find((node) => node.tagName === "DETAILS" && node.querySelector("summary")?.textContent.trim() === text);
+      const ordered = [
+        sectionByHeading("현재 진단"),
+        sectionByHeading("전달 경로"),
+        detailsBySummary("위기 조기경보등"),
+        sectionByHeading("정책 해석"),
+        detailsBySummary("균형 진단"),
+        detailsBySummary("원인 분해")
+      ].filter(Boolean);
+      let anchor = title?.nextSibling || inspector.firstChild;
+      ordered.forEach((node) => {
+        inspector.insertBefore(node, anchor);
+        anchor = node.nextSibling;
+      });
     }
 
     function readConfigFromControls() {
@@ -642,13 +720,7 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
     }
 
     function fireShareOfWorkers(share) {
-      const employedConsumers = shuffle(state.consumers.filter((consumer) => consumer.employed));
-      const fireCount = Math.floor(employedConsumers.length * share);
-      for (let i = 0; i < fireCount; i += 1) {
-        const consumer = employedConsumers[i];
-        const producer = state.producers[consumer.employerId];
-        if (producer) fireConsumer(producer, consumer);
-      }
+      return fireShareOfWorkersEngine(createLaborMarketContext(), share);
     }
 
     function syncLivePolicy() {
@@ -752,6 +824,44 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
 
     function effectiveBaseWage() {
       return state.policy ? state.policy.wageEffective : state.config.baseWage;
+    }
+
+    function createLaborMarketContext() {
+      return {
+        state,
+        TICKS_PER_MONTH,
+        MAX_WAGE_CHANGE_PER_TICK,
+        applyEquilibriumGravity,
+        applyInertia,
+        calculateUnemploymentRate,
+        clamp,
+        computeLaborResponseSignal,
+        createInitialSentimentState,
+        effectiveBaseWage,
+        rand,
+        recordFlow,
+        safeNumber,
+        shuffle,
+        smoothValue,
+        unique
+      };
+    }
+
+    function createProductionContext() {
+      return {
+        state,
+        CALIBRATION,
+        TARGET_INFLATION,
+        applyEquilibriumGravity,
+        applyInertia,
+        clamp,
+        computeInflationResponseSignal,
+        effectiveBaseWage,
+        getGDPGrowthWindow,
+        rand,
+        safeNumber,
+        smoothValue
+      };
     }
 
     function currentModelParameters() {
@@ -1271,42 +1381,6 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
         foreignInvestors: { sentiment: 0.72, capitalFlow: 0, equityFlow: 0 },
         foreignBondholders: { demand: 0.74, fundingPressure: 0.12 },
         foreignSuppliers: { pressure: 0.18, deliveryStress: 0.12 }
-      };
-    }
-
-    function createInitialMarketOutcome() {
-      return {
-        marketEfficiency: 0.62,
-        marketFailureRisk: 0.22,
-        marketSuccessScore: 0.50,
-        allocationQuality: 0.62,
-        competitionPressure: 0.50,
-        externalityPressure: 0.12,
-        informationFailure: 0.12,
-        creditMisallocation: 0.12,
-        inequalityDrag: 0.12,
-        publicGoodsGap: 0.10,
-        failureType: "없음",
-        successType: "형성 중"
-      };
-    }
-
-    function createInitialCausalDecomposition() {
-      return {
-        categories: [],
-        dominant: "형성 중",
-        secondary: "없음",
-        target: "GDP",
-        summary: "경제 신호가 누적되면 원인 분해가 표시됩니다."
-      };
-    }
-
-    function createInitialEarlyWarning() {
-      return {
-        items: [],
-        topRisks: [],
-        summary: "조기경보 신호가 안정 범위입니다.",
-        maxScore: 0
       };
     }
 
@@ -2427,300 +2501,18 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
     }
 
     // ===== 노동시장 =====
-    // 기업은 예상 수요, 재고, 현금, 금리를 보고 고용 목표를 조정한다.
     function updateLaborMarket() {
-      const unemploymentRate = calculateUnemploymentRate() / 100;
-      const availableWorkers = () => shuffle(state.consumers.filter((consumer) => !consumer.employed));
-      const equilibriumGravity = applyEquilibriumGravity();
-      const isMonthlyDecision = state.tick % TICKS_PER_MONTH === 0;
-      const recoveryUnemployment = unemploymentRate > 0.075;
-      const highUnemployment = unemploymentRate > 0.20;
-      const severeUnemployment = unemploymentRate > 0.35;
-      const veryTightLabor = unemploymentRate < 0.075;
-      const sentiment = state.sentiment || createInitialSentimentState();
-
-      state.producers.forEach((producer) => {
-        // 진동 완화: 고용은 현재 틱 판매가 아니라 지연된 기대수요에 반응하므로 과잉 고용/해고가 줄어든다.
-        const targetDemandSignal = producer.expectedDemand * state.shock.demandMultiplier * equilibriumGravity.demandAdjustment;
-        producer.laggedDemandSignal = applyInertia(safeNumber(producer.laggedDemandSignal, targetDemandSignal), targetDemandSignal);
-        const demandSignal = producer.laggedDemandSignal;
-        const stockTarget = Math.max(8, producer.expectedDemand * 1.9);
-        const inventoryRatio = producer.inventory / Math.max(1, stockTarget);
-        const profitTrend = 0.72 * producer.profitTrend + 0.28 * producer.lastProfit;
-        const profitHiringSignal = clamp(0.86 + profitTrend / 520, 0.58, 1.18);
-        if (isMonthlyDecision) {
-          producer.excessInventoryMonths = inventoryRatio > 2.05 ? (producer.excessInventoryMonths || 0) + 1 : Math.max(0, (producer.excessInventoryMonths || 0) - 1);
-          producer.weakDemandMonths = producer.unitsSoldTick < producer.expectedDemand * 0.62 ? (producer.weakDemandMonths || 0) + 1 : Math.max(0, (producer.weakDemandMonths || 0) - 1);
-          producer.negativeProfitMonths = producer.lastProfit < -45 ? (producer.negativeProfitMonths || 0) + 1 : Math.max(0, (producer.negativeProfitMonths || 0) - 1);
-          producer.deepLossMonths = producer.lastProfit < -180 ? (producer.deepLossMonths || 0) + 1 : Math.max(0, (producer.deepLossMonths || 0) - 1);
-        }
-        const excessInventoryDrag = inventoryRatio > 1.45 ? clamp(1.35 / inventoryRatio, 0.70, 0.98) : 1.04;
-        const lowInventoryBoost = inventoryRatio < 0.7 ? 1.12 : excessInventoryDrag;
-        const outlookHiringSignal = clamp((producer.businessOutlook * 0.70 + safeNumber(producer.businessConfidence, sentiment.businessConfidence) * 0.30), 0.50, 1.18);
-        const sentimentHiringDrag = clamp(1 - safeNumber(producer.hiringCaution, 0.25) * 0.18 - sentiment.recessionFear * 0.08 - sentiment.policyUncertainty * 0.05, 0.72, 1.04);
-        const stressMemory = clamp(producer.stressMemory || producer.debtStress, 0, 1.5);
-        const payrollNeed = producer.wageOffered * Math.max(1, producer.employees.length);
-        if (producer.lastProfit > 0 && producer.cash > payrollNeed) {
-          producer.hiringFreezeTicks = Math.max(0, safeNumber(producer.hiringFreezeTicks, 0) - 2);
-          producer.financiallyStressed = producer.stressMemory > 1.30 && producer.cash < payrollNeed;
-        }
-        const debtHiringDrag = stressMemory > 1.25 ? clamp(0.78 - Math.max(0, stressMemory - 1.25) * 0.50, 0.55, 0.78) : clamp(1 - producer.debtStress * 0.10, 0.86, 1);
-        producer.desiredProduction = clamp(
-          applyInertia(safeNumber(producer.desiredProduction, demandSignal), demandSignal * lowInventoryBoost * outlookHiringSignal * sentimentHiringDrag * clamp(producer.activityDrag || 1, 0.35, 1.04)),
-          0,
-          producer.productionCapacity
-        );
-
-        // 차입비용이 높아지면 같은 수요에도 신규 고용과 확장이 보수적으로 변한다.
-        const interestHiringDrag = clamp(1 - state.government.interestRate * 1.05 - (producer.debt / 12000) * state.government.interestRate, 0.72, 1.02);
-        const cashCapacity = Math.floor(producer.cash / Math.max(1, producer.wageOffered * 1.95));
-        const productiveLimit = Math.ceil(producer.productionCapacity / Math.max(0.6, producer.productivity));
-        const partialHiringAllowed = producer.hiringFreezeTicks > 0 && producer.lastProfit > 0 && inventoryRatio < 0.95 && producer.cash > payrollNeed * 1.8;
-        const hiringFrozen = producer.hiringFreezeTicks > 0 && !partialHiringAllowed;
-        const minimumEmployees = clamp(Math.floor(producer.productionCapacity / 8), 1, 8);
-        const demandBasedTarget = Math.round(demandSignal / Math.max(1.5, producer.productivity * 2.15));
-        const naturalUnemploymentFriction = unemploymentRate < 0.04
-          ? 0.72
-          : unemploymentRate < 0.06
-            ? 0.84
-            : 1;
-        const employmentAnchor = recoveryUnemployment && inventoryRatio < 2.15 && producer.lastProfit > -180
-          ? clamp(Math.floor(producer.productionCapacity / 1.80), minimumEmployees, 22)
-          : minimumEmployees;
-        const recoveryHiringBoost = recoveryUnemployment && inventoryRatio < 1.9 && producer.cash > producer.wageOffered * Math.max(2, minimumEmployees) * 1.35
-          ? (severeUnemployment ? 1.30 : highUnemployment ? 1.18 : 1.08)
-          : 1;
-        const dragAverage = (
-          lowInventoryBoost * 0.24 +
-          profitHiringSignal * 0.22 +
-          outlookHiringSignal * 0.22 +
-          interestHiringDrag * 0.16 +
-          debtHiringDrag * 0.16
-        );
-        const responseLaborMultiplier = computeLaborResponseSignal(producer, unemploymentRate);
-        const canFallBelowMinimum = producer.cash < producer.wageOffered * 0.45 || stressMemory > 1.60 || (producer.deepLossMonths || 0) >= 8;
-        const lowerBoundEmployees = canFallBelowMinimum ? 0 : Math.min(employmentAnchor, producer.employees.length + (isMonthlyDecision ? 1 : 0));
-        let rawTargetEmployees = clamp(
-          Math.round(demandBasedTarget * clamp(dragAverage * responseLaborMultiplier * recoveryHiringBoost * naturalUnemploymentFriction, 0.62, 1.12)),
-          lowerBoundEmployees,
-          Math.min(34, cashCapacity, productiveLimit)
-        );
-        if (hiringFrozen) rawTargetEmployees = Math.min(rawTargetEmployees, producer.employees.length);
-        if (!canFallBelowMinimum) rawTargetEmployees = Math.max(rawTargetEmployees, Math.min(employmentAnchor, Math.min(cashCapacity, productiveLimit)));
-        producer.smoothedTargetEmployees = clamp(
-          smoothValue(safeNumber(producer.smoothedTargetEmployees, producer.employees.length), rawTargetEmployees, isMonthlyDecision ? 0.30 : 0.08),
-          lowerBoundEmployees,
-          Math.min(34, cashCapacity, productiveLimit)
-        );
-        const targetEmployees = Math.round(producer.smoothedTargetEmployees);
-
-        const laborTightness = clamp(1 - unemploymentRate, 0.1, 0.96);
-        const profitSignal = clamp(profitTrend / 800, -0.10, 0.12);
-        producer.wageInflationMemory = applyInertia(safeNumber(producer.wageInflationMemory, Math.max(0, state.smoothedInflation)), Math.max(0, state.smoothedInflation));
-        // 임금-가격 나선 강화: 지속된 인플레이션 기억이 임금 요구로 남아 가격 압력에 다시 전달된다.
-        const inflationWagePush = clamp((state.smoothedInflation / 100) * 0.4 + (producer.wageInflationMemory / 100) * 0.16, -0.006, 0.013);
-        const desiredWage = effectiveBaseWage() * (0.88 + producer.productivity * 0.08 + laborTightness * 0.18 + profitSignal) * (1 + inflationWagePush);
-        const anchoredWage = clamp(
-          smoothValue(producer.wageOffered, desiredWage, 0.018),
-          producer.wageOffered * (1 - MAX_WAGE_CHANGE_PER_TICK * 0.45),
-          producer.wageOffered * (1 + MAX_WAGE_CHANGE_PER_TICK * 0.45)
-        );
-        producer.wageOffered = clamp(anchoredWage, effectiveBaseWage() * 0.62, effectiveBaseWage() * 1.78);
-
-        const gap = targetEmployees - producer.employees.length;
-        const shouldFireForInventory = (producer.excessInventoryMonths || 0) >= 5 && (producer.weakDemandMonths || 0) >= 3 && producer.lastProfit < -60;
-        const shouldFireForLosses = (producer.negativeProfitMonths || 0) >= 3 && (producer.lastProfit < -140 || producer.profitTrend < -210);
-        // 자연실업 앵커: 노동시장이 지나치게 타이트할 때는 대량해고 대신 소규모 자연 이직과 채용 마찰로 5~6% 균형에 천천히 접근한다.
-        let naturalSeparation = false;
-        if (isMonthlyDecision && unemploymentRate < 0.065 && producer.employees.length > minimumEmployees + 1) {
-          const separationChance = unemploymentRate < 0.03 ? 0.46 : unemploymentRate < 0.045 ? 0.36 : 0.24;
-          if (Math.random() < separationChance) {
-            const workerId = producer.employees[producer.employees.length - 1];
-            const worker = state.consumers[workerId];
-            if (worker) {
-              fireConsumer(producer, worker);
-              producer.firingCooldownTicks = Math.max(producer.firingCooldownTicks || 0, TICKS_PER_MONTH);
-              naturalSeparation = true;
-            }
-          }
-        }
-        const canHire = !naturalSeparation && gap > 0 && !hiringFrozen && producer.lastProfit > -95 && inventoryRatio < 2.60;
-        let monthlyHireAllowance = isMonthlyDecision ? (severeUnemployment ? 4 : highUnemployment ? 3 : recoveryUnemployment ? 2 : 1) : (highUnemployment ? 1 : 0);
-        if (partialHiringAllowed) monthlyHireAllowance = Math.max(monthlyHireAllowance, 1);
-        if (unemploymentRate < 0.065) monthlyHireAllowance = Math.min(monthlyHireAllowance, unemploymentRate < 0.045 ? 0 : 1);
-        if (veryTightLabor && producer.employees.length > minimumEmployees) monthlyHireAllowance = 0;
-
-        if (canHire && monthlyHireAllowance > 0) {
-          const workers = availableWorkers();
-          const wageAttractiveness = clamp(producer.wageOffered / Math.max(1, state.metrics.averageWage || effectiveBaseWage()), 0.72, 1.35);
-          const matchingNoise = rand(0.78, 1.08);
-          const matchEfficiency = clamp((0.40 + unemploymentRate * 0.16 + producer.businessOutlook * 0.08 + (wageAttractiveness - 1) * 0.18 - (state.financialConditionIndex || 0) * 0.006 - safeNumber(producer.hiringCaution, 0.25) * 0.10 + safeNumber(state.sentiment?.businessConfidence, 0.8) * 0.04) * matchingNoise, 0.18, 0.76);
-          const vacancies = Math.ceil(Math.min(gap, monthlyHireAllowance + producer.employees.length * 0.08 + rand(0, 1.2)));
-          const rawHires = Math.min(vacancies, Math.floor(workers.length * matchEfficiency), Math.ceil(rand(1, 3)));
-          producer.hireDecision = applyInertia(safeNumber(producer.hireDecision, 0), rawHires);
-          const hires = Math.min(rawHires, Math.max(0, Math.floor(producer.hireDecision) || (producer.hireDecision > 0.74 ? 1 : 0)));
-          for (let i = 0; i < hires; i += 1) {
-            hireConsumer(producer, workers[i]);
-          }
-        } else if (isMonthlyDecision && (gap < 0 || shouldFireForInventory || shouldFireForLosses) && (producer.firingCooldownTicks || 0) <= 0) {
-          const pressureFires = shouldFireForInventory || shouldFireForLosses ? 1 : 0;
-          const stabilizerFireBrake = severeUnemployment ? 0.10 : highUnemployment ? 0.28 : recoveryUnemployment ? 0.15 : 1;
-          const maxFires = 1;
-          const fireableEmployees = canFallBelowMinimum ? producer.employees.length : Math.max(0, producer.employees.length - employmentAnchor);
-          const rawFires = Math.min(Math.ceil((Math.abs(gap) + pressureFires) * stabilizerFireBrake), maxFires, fireableEmployees);
-          producer.fireDecision = applyInertia(safeNumber(producer.fireDecision, 0), rawFires);
-          const fires = Math.min(rawFires, Math.max(0, Math.floor(producer.fireDecision) || (producer.fireDecision > 0.78 ? 1 : 0)));
-          for (let i = 0; i < fires; i += 1) {
-            const employeeId = producer.employees[Math.floor(rand(0, producer.employees.length))];
-            if (employeeId !== undefined) fireConsumer(producer, state.consumers[employeeId]);
-          }
-          if (fires > 0) producer.firingCooldownTicks = TICKS_PER_MONTH;
-        }
-        if (producer.hiringFreezeTicks > 0) {
-          const thawSpeed = producer.lastProfit > 0 && producer.cash > payrollNeed ? 3 : 1;
-          producer.hiringFreezeTicks = Math.max(0, producer.hiringFreezeTicks - thawSpeed);
-        }
-        producer.firingCooldownTicks = Math.max(0, safeNumber(producer.firingCooldownTicks, 0) - 1);
-
-        // 자연 실업 앵커: 완전고용에 가까워지면 이직/구직 마찰이 조금 생겨 실업률이 0%로 붙지 않는다.
-        if (isMonthlyDecision && veryTightLabor && producer.employees.length > minimumEmployees + 1 && Math.random() < (unemploymentRate < 0.04 ? 0.46 : 0.28)) {
-          const employeeId = producer.employees[Math.floor(rand(0, producer.employees.length))];
-          if (employeeId !== undefined) {
-            fireConsumer(producer, state.consumers[employeeId]);
-            state.consumers[employeeId].confidence = clamp(state.consumers[employeeId].confidence + 0.03, 0.18, 1.35);
-          }
-        }
-      });
-
-      if (isMonthlyDecision) {
-        const currentUnemployment = calculateUnemploymentRate() / 100;
-        if (currentUnemployment < 0.060) {
-          const neededSeparations = Math.min(5, Math.ceil((0.060 - currentUnemployment) * state.consumers.length));
-          const employedConsumers = shuffle(state.consumers.filter((consumer) => consumer.employed));
-          let separated = 0;
-          for (let i = 0; i < employedConsumers.length && separated < neededSeparations; i += 1) {
-            const consumer = employedConsumers[i];
-            const producer = state.producers[consumer.employerId];
-            if (!producer) {
-              consumer.employed = false;
-              consumer.employerId = null;
-              separated += 1;
-              continue;
-            }
-            const minimumEmployees = clamp(Math.floor(producer.productionCapacity / 8), 1, 8);
-            if (producer.employees.length <= minimumEmployees + 1) continue;
-            fireConsumer(producer, consumer);
-            consumer.confidence = clamp(consumer.confidence + 0.04, 0.18, 1.35);
-            separated += 1;
-          }
-        }
-      }
+      return updateLaborMarketEngine(createLaborMarketContext());
     }
 
     // ===== 임금과 소득세 =====
-    // 기업은 고용된 소비자에게 임금을 지급하고, 정부는 임금세를 걷는다.
     function payWages() {
-      state.producers.forEach((producer) => {
-        const remainingEmployees = [];
-
-        producer.employees.forEach((consumerId) => {
-          const consumer = state.consumers[consumerId];
-          if (!consumer || !consumer.employed) return;
-
-          const grossWage = producer.wageOffered;
-          if (producer.cash < grossWage * 0.85) {
-            const minimumEmployees = clamp(Math.floor(producer.productionCapacity / 8), 1, 8);
-            const criticalCash = producer.cash < grossWage * 0.25 && producer.debtStress > 1.15;
-            const canFireForPayroll = state.tick % TICKS_PER_MONTH === 0 && (producer.firingCooldownTicks || 0) <= 0 && (producer.employees.length > minimumEmployees || criticalCash);
-            if (canFireForPayroll) {
-              fireConsumer(producer, consumer);
-              producer.firingCooldownTicks = TICKS_PER_MONTH;
-              return;
-            }
-            const bridgeLoan = Math.min(grossWage - producer.cash, grossWage * 0.75, 180);
-            if (bridgeLoan > 0 && producer.debtStress < 1.15) {
-              producer.cash += bridgeLoan;
-              producer.debt += bridgeLoan * (1 + state.government.interestRate * 0.10);
-            }
-            if (producer.cash < grossWage * 0.35) return;
-          }
-
-          const paidWage = Math.min(grossWage, producer.cash);
-          const tax = paidWage * state.government.householdIncomeTaxRate;
-          const netWage = paidWage - tax;
-          producer.cash -= paidWage;
-          producer.wageCostTick += paidWage;
-          consumer.cash += netWage;
-          consumer.grossIncomeTick += paidWage;
-          consumer.disposableIncomeTick += netWage;
-          consumer.income += netWage;
-          consumer.lastTax += tax;
-          state.government.taxCollectedTick += tax;
-          state.government.householdIncomeTaxCollectedTick += tax;
-          state.metrics.householdIncomeTaxCollected += tax;
-          state.metrics.totalTaxCollected += tax;
-          state.metrics.wages += paidWage;
-
-          recordFlow("producer", producer.id, "consumer", consumer.id, paidWage, "wage");
-          if (tax > 0.1) recordFlow("consumer", consumer.id, "government", 0, tax, "tax");
-          remainingEmployees.push(consumerId);
-        });
-
-        producer.employees = unique(remainingEmployees);
-      });
+      return payWagesEngine(createLaborMarketContext());
     }
 
     // ===== 생산 =====
-    // 고용자 수와 생산성이 재고 증가로 이어지며, 공급 충격은 생산량을 낮춘다.
     function produceGoods() {
-      state.producers.forEach((producer) => {
-        // 생산계획은 최대 생산능력이 아니라 기대수요와 적정 재고버퍼(약 1.2개월)를 기준으로 부분 조정된다.
-        const targetInventory = Math.max(8, producer.expectedDemand * 1.2);
-        const inventoryRatio = producer.inventory / targetInventory;
-        const inventoryDemandRatio = producer.inventory / Math.max(1, producer.expectedDemand);
-        const desiredInventoryChange = targetInventory - producer.inventory;
-        const utilizationTarget = inventoryRatio > 2.4
-          ? 0.14
-          : inventoryRatio > 1.7
-            ? 0.34
-            : inventoryRatio > 1.15
-              ? 0.62
-              : inventoryRatio < 0.75
-                ? 1.04
-                : 0.86;
-        producer.productionUtilization = clamp(
-          smoothValue(safeNumber(producer.productionUtilization, 1), utilizationTarget, inventoryRatio > 1.15 ? 0.22 : 0.10),
-          0.10,
-          1.06
-        );
-        const inventorySlowdown = inventoryRatio > 1
-          ? clamp(1 / (1 + (inventoryRatio - 1) * 1.35), 0.18, 1)
-          : 1;
-        const productionTarget = clamp(producer.expectedDemand * rand(0.92, 1.08) + desiredInventoryChange * 0.18, 0.35, producer.productionCapacity);
-        producer.productionPlan = smoothValue(safeNumber(producer.productionPlan, productionTarget), productionTarget, 0.16);
-        const demandPlan = clamp(producer.productionPlan / Math.max(1, producer.productionCapacity), 0.18, 1.12);
-        const outlookPlan = clamp(producer.businessOutlook, 0.58, 1.16);
-        const activityDrag = clamp(producer.activityDrag || 1, 0.35, 1.04);
-        producer.desiredProduction = smoothValue(producer.desiredProduction || producer.expectedDemand, producer.productionPlan * outlookPlan * activityDrag * producer.productionUtilization, 0.12);
-        const laborOutput = producer.employees.length * producer.productivity * rand(0.88, 1.13);
-        const baselineOutput = producer.productionCapacity * rand(0.030, 0.066);
-        const fallbackFloor = Math.min(producer.productionCapacity * 0.12, Math.max(0.8, producer.expectedDemand * 0.09 + producer.employees.length * 0.04));
-        const output = clamp(
-          (laborOutput + baselineOutput) * demandPlan * outlookPlan * inventorySlowdown * producer.productionUtilization * activityDrag * state.shock.productivityMultiplier,
-          inventoryDemandRatio > 3.0 ? fallbackFloor * 0.06 : inventoryDemandRatio > 2.2 ? fallbackFloor * 0.18 : fallbackFloor,
-          producer.productionCapacity
-        );
-
-        producer.productionTick = output;
-        // 재고 과잉은 먼저 생산 이용률을 낮추고, 오래 쌓인 초과 재고는 일부 폐기/구식화되어 재고-수요 비율이 영구 고착되지 않게 한다.
-        if (inventoryDemandRatio > 3.2) {
-          const clearanceRate = inventoryDemandRatio > 4.2 ? 0.010 : 0.006;
-          const inventoryClearance = Math.min(producer.inventory * clearanceRate, producer.expectedDemand * 0.08);
-          producer.inventory = Math.max(0, producer.inventory - inventoryClearance);
-        }
-        producer.inventory += output;
-        state.metrics.productionUnits += output;
-      });
+      return produceGoodsEngine(createProductionContext());
     }
 
     // ===== 정부 지출 =====
@@ -3179,102 +2971,12 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
     }
 
     // ===== 가격과 기대수요 =====
-    // 재고가 부족하면 가격을 올리고, 재고가 쌓이면 가격을 내리는 방식으로 시장 압력을 반영한다.
     function computePriceChange(producer, observedDemand) {
-      const targetInventory = clamp(producer.expectedDemand * 1.85 + 9, 8, producer.productionCapacity * 4.2);
-      const inventoryRatio = producer.inventory / Math.max(1, targetInventory);
-      const demandPressure = observedDemand / Math.max(1, producer.productionTick + 0.8);
-      const wageCostRatio = producer.wageOffered / Math.max(1, effectiveBaseWage());
-      const longRunPrice = Math.max(2.2, producer.longRunPrice || producer.price);
-      const priceDeviation = (producer.price - longRunPrice) / longRunPrice;
-
-      // 가격 형성: 수요, 비용, 재고, 기대를 비슷한 크기로 정규화한 뒤 관성/평균회귀로 과잉 반응을 줄인다.
-      const demandNorm = clamp(demandPressure - 1.0, -1.0, 1.0);
-      const costNorm = clamp((wageCostRatio - 1.0) + state.smoothedWageGrowth / 100, -1.0, 1.0);
-      const externalCostNorm = clamp(
-        Math.max(0, safeNumber(state.metrics.importInflationPressure, 0)) * safeNumber(producer.importCostExposure, 0) * 0.16
-          + Math.max(0, safeNumber(state.metrics.commodityCostPressure, 0)) * safeNumber(producer.energyCostExposure, 0) * 0.13,
-        0,
-        1
-      );
-      const inventoryNorm = inventoryRatio < 1
-        ? clamp(1 - inventoryRatio, 0, 1)
-        : -clamp((inventoryRatio - 1.35) / 1.8, 0, 1);
-      const expectationNorm = clamp((producer.expectedInflation - TARGET_INFLATION) / 5, -1, 1);
-
-      const demandPull = clamp(demandNorm * 0.010, -0.010, 0.014);
-      const costPush = clamp(costNorm * 0.008 + externalCostNorm * 0.006, -0.006, 0.014);
-      const shortage = clamp(inventoryNorm * 0.012, -0.010, 0.014);
-      const expectations = clamp(expectationNorm * 0.005, -0.004, 0.007);
-      const equilibriumPull = clamp((TARGET_INFLATION - state.smoothedInflation) * 0.00220, -0.003, 0.007);
-      const meanReversion = clamp(-priceDeviation * 0.006, -0.006, 0.006);
-      const responseInflationPressure = computeInflationResponseSignal(producer, observedDemand);
-
-      let rawChange = state.shock.pricePressure + demandPull + costPush + shortage + expectations + equilibriumPull + meanReversion + responseInflationPressure;
-      const recessionary = state.metrics.unemploymentRate > 12 || getGDPGrowthWindow() < -4;
-        const tightLabor = state.metrics.unemploymentRate < 6 && !recessionary;
-      if (state.smoothedInflation < 1.0) rawChange += recessionary ? 0.00250 : 0.00950;
-      if (tightLabor && inventoryRatio < 2.4) rawChange += 0.0032;
-      if (producer.lastProfit < -60) rawChange += 0.0015;
-      if (producer.financiallyStressed && producer.inventory > producer.expectedDemand) rawChange -= 0.0014;
-
-      const firmSize = clamp(producer.productionCapacity / 180, 0, 1);
-      const inertiaDrag = clamp(1 - firmSize * 0.28 - (producer.priceInertia || 0.08), 0.58, 0.94);
-      const smoothedChange = smoothValue(producer.lastPriceChange || 0, rawChange * inertiaDrag * state.config.inflationSensitivity, 0.42 / Math.max(0.4, CALIBRATION.priceStickiness));
-      const positivePriceLimit = 0.025;
-      const negativeLimit = recessionary ? -0.015 : tightLabor ? -0.006 : -0.012;
-      const change = clamp(smoothedChange, negativeLimit, positivePriceLimit);
-      producer.lastPriceChange = change;
-      producer.longRunPrice = clamp(smoothValue(longRunPrice, producer.price, 0.006), 2.2, 65);
-
-      return { change, demandPull, costPush, shortage, expectations: expectations + responseInflationPressure };
+      return computePriceChangeEngine(createProductionContext(), producer, observedDemand);
     }
 
     function adjustProducerPricesAndExpectations() {
-      const drivers = { demandPull: 0, costPush: 0, shortage: 0, expectations: 0 };
-      const equilibriumGravity = applyEquilibriumGravity();
-      state.producers.forEach((producer) => {
-        const observedDemand = producer.unitsSoldTick;
-        producer.smoothedObservedDemand = applyInertia(safeNumber(producer.smoothedObservedDemand, observedDemand), observedDemand);
-        const procurementDemand = state.metrics.governmentProcurement / Math.max(1, state.metrics.averagePrice || producer.price) * 0.06;
-        const inventoryDemandRatio = producer.inventory / Math.max(1, producer.expectedDemand);
-        const inventoryExpectationBrake = inventoryDemandRatio > 2.6
-          ? 0.92
-          : inventoryDemandRatio > 1.8
-            ? 0.96
-            : 1;
-        const rawExpectedDemand = (producer.expectedDemand * 0.72 + producer.smoothedObservedDemand * 0.28 + procurementDemand) * equilibriumGravity.demandAdjustment * inventoryExpectationBrake;
-        producer.expectedDemand = clamp(applyInertia(producer.expectedDemand, rawExpectedDemand), 1, producer.productionCapacity * 2.8);
-
-        // 인플레이션 메커니즘: 수요초과, 비용상승, 재고부족, 기대인플레이션을 분리해 완만히 가격에 반영한다.
-        const priceResult = computePriceChange(producer, observedDemand);
-        drivers.demandPull += priceResult.demandPull;
-        drivers.costPush += priceResult.costPush;
-        drivers.shortage += priceResult.shortage;
-        drivers.expectations += priceResult.expectations;
-        // 임금-가격 나선 강화: 임금상승률과 기대물가가 가격에 추가 전가되지만, 최종 변화율은 계속 3%로 제한한다.
-        const wagePassThrough = clamp((state.smoothedWageGrowth / 100) * 0.5, -0.010, 0.016);
-        const expectationAmplification = clamp((producer.expectedInflation - TARGET_INFLATION) / 100 * 0.18, -0.004, 0.010);
-        const recessionary = state.metrics.unemploymentRate > 12 || getGDPGrowthWindow() < -4;
-        const tightLabor = state.metrics.unemploymentRate < 6 && !recessionary;
-        const priceAnchorBoost = state.smoothedInflation < 1.0
-          ? (recessionary ? 0.0040 : 0.0170)
-          : state.smoothedInflation < TARGET_INFLATION
-            ? (recessionary ? 0.0015 : 0.0070)
-            : 0;
-        const negativeLimit = recessionary ? -0.015 : tightLabor ? -0.006 : -0.012;
-        const finalChange = clamp(priceResult.change + wagePassThrough + expectationAmplification + equilibriumGravity.priceAdjustment + priceAnchorBoost, negativeLimit, 0.025);
-        producer.lastPriceChange = applyInertia(producer.lastPriceChange || 0, finalChange);
-        producer.price = clamp(producer.price * (1 + producer.lastPriceChange), 2.2, 65);
-      });
-
-      const n = Math.max(1, state.producers.length);
-      state.priceDrivers = {
-        demandPull: drivers.demandPull / n,
-        costPush: drivers.costPush / n,
-        shortage: drivers.shortage / n,
-        expectations: drivers.expectations / n
-      };
+      return adjustProducerPricesAndExpectationsEngine(createProductionContext());
     }
 
     // ===== 이윤세 =====
@@ -4922,286 +4624,23 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
     }
 
     function computeMarketOutcome() {
-      if (!state.marketOutcome) state.marketOutcome = createInitialMarketOutcome();
-      const m = state.metrics;
-      const outcome = state.marketOutcome;
-      const infoFailure = clamp(
-        safeNumber(m.misperceptionIndex, 0.12) * 0.42
-          + safeNumber(m.informationUncertainty, 0.16) * 0.34
-          + safeNumber(m.marketOverreaction, 0.10) * 0.18
-          + safeNumber(m.rumorIntensity, 0) * 0.16,
-        0,
-        1
-      );
-      const creditMisallocation = clamp(
-        safeNumber(m.creditExcessRisk, 0.12) * 0.38
-          + safeNumber(m.creditCrunchRisk, 0.12) * 0.32
-          + safeNumber(m.riskUnderpricing, 0.12) * 0.18
-          + safeNumber(m.zombieFirmRatio, 0) / 100 * 0.20,
-        0,
-        1
-      );
-      const externalityPressure = clamp(
-        Math.max(0, safeNumber(m.importInflationPressure, 0)) * 0.070
-          + Math.max(0, safeNumber(m.commodityCostPressure, 0)) * 0.090
-          + safeNumber(m.energyStress, 0) * 0.30
-          + safeNumber(m.agricultureStress, 0) * 0.22
-          + Math.max(0, safeNumber(m.energyPriceIndex, 100) - 110) / 180,
-        0,
-        1
-      );
-      const sectorStats = state.metrics.sectorStress || {};
-      const sectorCounts = Object.values(sectorStats).map((s) => safeNumber(s.count, 0));
-      const totalSectors = Math.max(1, sum(sectorCounts));
-      const largestSectorShare = sectorCounts.length ? Math.max(...sectorCounts) / totalSectors : 0.25;
-      const competitionPressure = clamp(0.18 + Math.max(0, largestSectorShare - 0.32) * 1.1 + Math.max(0, 18 - state.producers.length) / 40, 0, 1);
-      const inequalityDrag = clamp(
-        safeNumber(m.wealthInequality, 0) * 0.30
-          + Math.max(0, 1 - safeNumber(m.lowIncomeConsumptionCapacity, 1)) * 0.34
-          + safeNumber(m.socialStressIndex, 0) * 0.26,
-        0,
-        1
-      );
-      const supplyBottleneck = clamp(
-        Math.max(0, safeNumber(m.capacityUtilization, 75) - 92) / 25
-          + Math.max(0, 0.85 - safeNumber(m.inventoryToDemand, 1.2)) * 0.50
-          + externalityPressure * 0.28,
-        0,
-        1
-      );
-      const publicGoodsGap = clamp(
-        Math.max(0, 0.36 - safeNumber(m.fiscalSpaceScore, 0.7)) * 0.52
-          + Math.max(0, safeNumber(m.unemploymentGap, 0)) / 25
-          + Math.max(0, externalityPressure - 0.45) * 0.22,
-        0,
-        1
-      );
-      const inventoryPenalty = clamp(Math.max(0, safeNumber(m.inventoryToDemand, 1) - 2.2) / 2.8, 0, 1);
-      const allocationQualityTarget = clamp(
-        0.76
-          - creditMisallocation * 0.22
-          - infoFailure * 0.16
-          - inventoryPenalty * 0.16
-          - safeNumber(m.zombieFirmRatio, 0) / 100 * 0.14
-          - inequalityDrag * 0.12
-          + clamp(safeNumber(m.investmentConversionRate, 0.25), 0, 0.8) * 0.12,
-        0,
-        1
-      );
-      const marketEfficiencyTarget = clamp(
-        allocationQualityTarget * 0.46
-          + clamp(safeNumber(m.creditSupplyIndex, 100) / 115, 0, 1) * 0.18
-          + clamp(1 - Math.abs(safeNumber(m.outputGap, 0)) / 12, 0, 1) * 0.16
-          + clamp(1 - Math.abs(safeNumber(m.inflationGap, 0)) / 6, 0, 1) * 0.12
-          + clamp(1 - competitionPressure, 0, 1) * 0.08,
-        0,
-        1
-      );
-      const bubbleFailure = clamp(Math.max(safeNumber(m.assetBubbleRiskScore, 0), safeNumber(m.behavioralMispricingIndex, 0), Math.max(0, safeNumber(m.stockMispricing, 0)) / 100, Math.max(0, safeNumber(m.housingMispricing, 0)) / 100), 0, 1);
-      const failureDrivers = [
-        ["정보 비대칭", infoFailure],
-        ["신용 배분 실패", creditMisallocation],
-        ["자산 버블", bubbleFailure],
-        ["독과점/경쟁 약화", competitionPressure],
-        ["외부비용 충격", externalityPressure],
-        ["불평등에 따른 수요 약화", inequalityDrag],
-        ["공공재·안정화 부족", publicGoodsGap],
-        ["공급 병목", supplyBottleneck]
-      ];
-      const strongestFailure = failureDrivers.reduce((best, item) => item[1] > best[1] ? item : best, failureDrivers[0]);
-      const marketFailureTarget = clamp(
-        infoFailure * 0.15
-          + creditMisallocation * 0.18
-          + bubbleFailure * 0.14
-          + competitionPressure * 0.08
-          + externalityPressure * 0.15
-          + inequalityDrag * 0.12
-          + publicGoodsGap * 0.08
-          + supplyBottleneck * 0.10,
-        0,
-        1
-      );
-      const broadConsumption = clamp((safeNumber(m.lowIncomeConsumptionCapacity, 1) + clamp(1 - safeNumber(m.middleClassMortgageStress, 0), 0, 1) + safeNumber(m.consumerSentiment, 0.8)) / 3, 0, 1.2);
-      const healthyInvestment = clamp(safeNumber(m.investmentConversionRate, 0.25) * 1.8 + Math.max(0, safeNumber(m.sectorTotalInvestment, 0)) / Math.max(1, safeNumber(m.gdp, 1)) * 0.4, 0, 1);
-      const successDrivers = [
-        ["균형 성장", clamp((1 - Math.abs(safeNumber(m.outputGap, 0)) / 7) * 0.34 + (1 - Math.abs(safeNumber(m.inflationGap, 0)) / 4) * 0.30 + (1 - Math.abs(safeNumber(m.unemploymentGap, 0)) / 12) * 0.22 + marketEfficiencyTarget * 0.14, 0, 1)],
-        ["생산성 개선", clamp(healthyInvestment * 0.38 + Math.max(0, safeNumber(m.realWageGrowth, 0)) / 4 * 0.18 + marketEfficiencyTarget * 0.28 + Math.max(0, safeNumber(m.outputGap, 0)) / 10 * 0.10, 0, 1)],
-        ["안정적 신용공급", clamp((1 - Math.abs(safeNumber(m.creditSupplyIndex, 100) - 96) / 50) * 0.46 + (1 - safeNumber(m.creditCrunchRisk, 0.12)) * 0.22 + (1 - safeNumber(m.creditExcessRisk, 0.12)) * 0.18, 0, 1)],
-        ["광범위한 소비 회복", broadConsumption],
-        ["물가 안정", clamp(1 - Math.abs(safeNumber(m.inflationGap, 0)) / 4, 0, 1)],
-        ["건전한 투자 확대", clamp(healthyInvestment * 0.62 + (1 - safeNumber(m.firmVulnerability, 0.15)) * 0.22 + safeNumber(m.businessSentiment, 0.8) * 0.16, 0, 1)]
-      ];
-      const strongestSuccess = successDrivers.reduce((best, item) => item[1] > best[1] ? item : best, successDrivers[0]);
-      const successTarget = clamp(strongestSuccess[1] * 0.50 + marketEfficiencyTarget * 0.32 + (1 - marketFailureTarget) * 0.18, 0, 1);
-
-      outcome.allocationQuality = clamp(smoothValue(safeNumber(outcome.allocationQuality, 0.62), allocationQualityTarget, 0.12), 0, 1);
-      outcome.marketEfficiency = clamp(smoothValue(safeNumber(outcome.marketEfficiency, 0.62), marketEfficiencyTarget, 0.12), 0, 1);
-      outcome.marketFailureRisk = clamp(smoothValue(safeNumber(outcome.marketFailureRisk, 0.22), marketFailureTarget, marketFailureTarget > safeNumber(outcome.marketFailureRisk, 0.22) ? 0.14 : 0.07), 0, 1);
-      outcome.marketSuccessScore = clamp(smoothValue(safeNumber(outcome.marketSuccessScore, 0.50), successTarget, 0.10), 0, 1);
-      outcome.competitionPressure = competitionPressure;
-      outcome.externalityPressure = externalityPressure;
-      outcome.informationFailure = infoFailure;
-      outcome.creditMisallocation = creditMisallocation;
-      outcome.inequalityDrag = inequalityDrag;
-      outcome.publicGoodsGap = publicGoodsGap;
-      outcome.failureType = strongestFailure[1] > 0.34 ? strongestFailure[0] : "없음";
-      outcome.successType = strongestSuccess[1] > 0.56 ? strongestSuccess[0] : "형성 중";
-
-      m.marketEfficiency = outcome.marketEfficiency;
-      m.marketFailureRisk = outcome.marketFailureRisk;
-      m.marketSuccessScore = outcome.marketSuccessScore;
-      m.allocationQuality = outcome.allocationQuality;
-      m.competitionPressure = outcome.competitionPressure;
-      m.externalityPressure = outcome.externalityPressure;
-      m.informationFailure = outcome.informationFailure;
-      m.creditMisallocation = outcome.creditMisallocation;
-      m.inequalityDrag = outcome.inequalityDrag;
-      m.publicGoodsGap = outcome.publicGoodsGap;
-      m.marketFailureType = outcome.failureType;
-      m.marketSuccessType = outcome.successType;
+      return computeMarketOutcomeAnalysis(state);
     }
 
     function updateCausalDecomposition() {
-      if (!state.causalDecomposition) state.causalDecomposition = createInitialCausalDecomposition();
-      const categories = computeCausalPressureScores();
-      const sorted = [...categories].sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
-      const dominant = sorted[0] || { label: "형성 중", score: 0, target: "GDP" };
-      const secondary = sorted[1] || { label: "없음", score: 0, target: "GDP" };
-      state.causalDecomposition.categories = categories;
-      state.causalDecomposition.dominant = dominant.label;
-      state.causalDecomposition.secondary = secondary.label;
-      state.causalDecomposition.target = dominant.target;
-      state.causalDecomposition.summary = `${dominant.label} 압력이 ${dominant.target}에 가장 크게 작용하고 있습니다.`;
-      state.metrics.causalDominant = dominant.label;
-      state.metrics.causalSecondary = secondary.label;
-      state.metrics.causalDominantScore = dominant.score;
+      return updateCausalDecompositionAnalysis(state);
     }
 
     function computeCausalPressureScores() {
-      const m = state.metrics || {};
-      const score = (value) => clamp(Math.round(safeNumber(value, 0)), -100, 100);
-      const outputGap = safeNumber(m.outputGap, 0);
-      const inflationGap = safeNumber(m.inflationGap, safeNumber(m.inflation, TARGET_INFLATION) - TARGET_INFLATION);
-      const rateDebt = score(
-        Math.max(0, safeNumber(m.realPolicyRate, 0) - 1.2) * 13
-          + Math.max(0, safeNumber(m.loanRate, 0) - 5.5) * 8
-          + safeNumber(m.averageHouseholdDebtBurden, 0) * 1.4
-          + Math.max(0, safeNumber(m.mortgageRate, 0) - 5.5) * 7
-          - Math.max(0, 1.0 - safeNumber(m.realPolicyRate, 0)) * 5
-      );
-      const credit = score(
-        Math.max(0, 92 - safeNumber(m.creditSupplyIndex, 100)) * 1.0
-          + safeNumber(m.creditSpread, 2) * 8
-          + safeNumber(m.creditCrunchRisk, 0.12) * 42
-          + safeNumber(m.creditOfficerCaution, 0.28) * 28
-          + Math.max(0, 0.72 - safeNumber(m.interbankTrust, 0.84)) * 48
-          - safeNumber(m.creditExcessRisk, 0.12) * 18
-      );
-      const asset = score(
-        safeNumber(m.assetBubbleRiskScore, 0) * 34
-          + Math.max(0, safeNumber(m.stockMispricing, 0)) * 0.52
-          + Math.max(0, safeNumber(m.housingMispricing, 0)) * 0.46
-          - Math.max(0, -safeNumber(m.stockMonthlyReturn, 0)) * 3.2
-          - Math.max(0, 96 - safeNumber(m.collateralValueIndex, 100)) * 1.1
-      );
-      const fiscalTax = score(
-        Math.max(0, 0.45 - safeNumber(m.fiscalSpaceScore, 0.7)) * 62
-          + Math.max(0, safeNumber(m.debtToGdpRatio, 0) - 1.0) * 30
-          + safeNumber(m.taxSentimentScore, 0) * 26
-          + safeNumber(m.consumptionTaxPain, 0) * 18
-          - Math.max(0, safeNumber(m.governmentSpendingActual, 0)) / Math.max(1, safeNumber(m.gdp, 1)) * 18
-      );
-      const external = score(
-        Math.max(0, safeNumber(m.exchangeRateIndex, 100) - 104) * 1.2
-          + Math.max(0, safeNumber(m.importPriceIndex, 100) - 103) * 1.0
-          + Math.max(0, 0.62 - safeNumber(m.foreignInvestorSentiment, 0.72)) * 45
-          + Math.max(0, 0.62 - safeNumber(m.foreignBondDemand, 0.74)) * 38
-          + safeNumber(m.externalVulnerability, 0) * 28
-      );
-      const sentimentInfo = score(
-        Math.max(0, 0.62 - safeNumber(m.consumerSentiment, 0.8)) * 40
-          + Math.max(0, 0.62 - safeNumber(m.businessSentiment, 0.8)) * 42
-          + safeNumber(m.recessionFear, 0.2) * 34
-          + safeNumber(m.informationUncertainty, 0.16) * 24
-          + safeNumber(m.misperceptionIndex, 0.12) * 22
-          + safeNumber(m.rumorIntensity, 0) * 18
-      );
-      const supply = score(
-        Math.max(0, safeNumber(m.commodityPriceIndex, 100) - 104) * 0.78
-          + Math.max(0, safeNumber(m.energyPriceIndex, 100) - 104) * 0.75
-          + safeNumber(m.commodityCostPressure, 0) * 13
-          + safeNumber(m.agricultureStress, 0) * 28
-          + safeNumber(m.energyStress, 0) * 32
-          + Math.max(0, inflationGap) * 5
-      );
-      const classPressure = score(
-        safeNumber(m.lowIncomeStress, 0) * 34
-          + safeNumber(m.middleClassMortgageStress, 0) * 32
-          + safeNumber(m.socialStressIndex, 0) * 28
-          + Math.max(0, 1 - safeNumber(m.lowIncomeConsumptionCapacity, 1)) * 34
-          + safeNumber(m.classSentimentGap, 0) * 20
-      );
-      const classifyTarget = (label, value) => {
-        if (label === "공급비용" || (value > 25 && inflationGap > 1.0)) return "물가";
-        if (label === "금리·부채" || label === "은행·신용" || label === "자산시장") return value > 0 ? "투자" : "소비";
-        if (label === "계층 압박" || label === "심리·정보") return "소비";
-        if (outputGap < -2) return "GDP";
-        return "GDP";
-      };
-      return [
-        { key: "rateDebt", label: "금리·부채", score: rateDebt },
-        { key: "credit", label: "은행·신용", score: credit },
-        { key: "asset", label: "자산시장", score: asset },
-        { key: "fiscalTax", label: "세금·재정", score: fiscalTax },
-        { key: "external", label: "대외·환율", score: external },
-        { key: "sentimentInfo", label: "심리·정보", score: sentimentInfo },
-        { key: "supply", label: "공급비용", score: supply },
-        { key: "classPressure", label: "계층 압박", score: classPressure }
-      ].map((item) => ({ ...item, target: classifyTarget(item.label, item.score) }));
+      return computeCausalPressureScoresAnalysis(state.metrics || {});
     }
 
     function updateEarlyWarningSystem() {
-      if (!state.earlyWarning) state.earlyWarning = createInitialEarlyWarning();
-      const m = state.metrics || {};
-      const warning = (label, rawScore) => {
-        const score = clamp(Math.round(safeNumber(rawScore, 0)), 0, 100);
-        const level = score >= 70 ? "위험" : score >= 42 ? "주의" : "안정";
-        return { label, score, level };
-      };
-      const items = [
-        warning("신용경색", safeNumber(m.creditCrunchRisk, 0.12) * 58 + Math.max(0, 88 - safeNumber(m.creditSupplyIndex, 100)) * 0.85 + safeNumber(m.creditSpread, 2) * 5.8 + safeNumber(m.creditOfficerCaution, 0.28) * 22),
-        warning("신용 과다", safeNumber(m.creditExcessRisk, 0.12) * 62 + safeNumber(m.riskUnderpricing, 0.12) * 24 + Math.max(0, safeNumber(m.creditGap, 0)) * 90 + safeNumber(m.assetBubbleRiskScore, 0) * 20),
-        warning("자산버블", safeNumber(m.assetBubbleRiskScore, 0) * 46 + Math.max(0, safeNumber(m.stockMispricing, 0)) * 0.58 + Math.max(0, safeNumber(m.housingMispricing, 0)) * 0.52 + safeNumber(m.fomoIntensity, 0) * 20),
-        warning("은행불안", safeNumber(m.bankStress, 0) * 36 + Math.max(0, 76 - safeNumber(m.bankHealthIndex, 100)) * 0.78 + Math.max(0, 0.66 - safeNumber(m.depositorConfidence, 0.88)) * 52 + Math.max(0, 0.66 - safeNumber(m.interbankTrust, 0.84)) * 48),
-        warning("외환불안", Math.max(0, safeNumber(m.exchangeRateIndex, 100) - 106) * 1.6 + Math.max(0, safeNumber(m.importPriceIndex, 100) - 105) * 1.1 + Math.max(0, 0.60 - safeNumber(m.foreignInvestorSentiment, 0.72)) * 52 + safeNumber(m.externalVulnerability, 0) * 28),
-        warning("재정압박", Math.max(0, safeNumber(m.debtToGdpRatio, 0) - 1.0) * 42 + Math.max(0, 0.48 - safeNumber(m.fiscalSpaceScore, 0.7)) * 72 + Math.max(0, 0.55 - safeNumber(m.fiscalCredibility, 0.75)) * 42 + Math.max(0, safeNumber(m.governmentAverageFundingRate, 0) - 5.5) * 5),
-        warning("인플레이션 기대불안", Math.max(0, safeNumber(m.sentimentInflationExpectations, TARGET_INFLATION) - TARGET_INFLATION) * 24 + Math.max(0, safeNumber(m.inflation, TARGET_INFLATION) - TARGET_INFLATION) * 8 + Math.max(0, 0.62 - safeNumber(m.inflationTargetCredibility, 0.8)) * 52 + safeNumber(m.safeHavenDemand, 0) * 0.22),
-        warning("계층 스트레스", safeNumber(m.lowIncomeStress, 0) * 35 + safeNumber(m.middleClassMortgageStress, 0) * 30 + safeNumber(m.socialStressIndex, 0) * 30 + Math.max(0, 1 - safeNumber(m.lowIncomeConsumptionCapacity, 1)) * 34),
-        warning("시장 실패", safeNumber(m.marketFailureRisk, 0.22) * 66 + safeNumber(m.informationFailure, 0.12) * 16 + safeNumber(m.creditMisallocation, 0.12) * 18 + safeNumber(m.inequalityDrag, 0.12) * 12)
-      ].sort((a, b) => b.score - a.score);
-      state.earlyWarning.items = items;
-      state.earlyWarning.topRisks = items.slice(0, 3);
-      state.earlyWarning.maxScore = items[0]?.score || 0;
-      state.earlyWarning.summary = items.slice(0, 3).map((item) => `${item.label} ${item.level}`).join(" · ");
-      state.metrics.earlyWarningMaxScore = state.earlyWarning.maxScore;
-      state.metrics.earlyWarningTopRisk = items[0]?.label || "없음";
-      state.metrics.earlyWarningReason = earlyWarningReasonLabel(items[0]?.label || "없음");
+      return updateEarlyWarningSystemAnalysis(state, { formatSigned, percent, signedPercent });
     }
 
     function earlyWarningReasonLabel(label) {
-      const m = state.metrics || {};
-      const reasons = {
-        "신용경색": `신용공급 ${round(safeNumber(m.creditSupplyIndex, 100), 1).toFixed(1)}, 신용스프레드 ${round(safeNumber(m.creditSpread, 0), 2).toFixed(2)}%p`,
-        "신용 과다": `신용갭 ${formatSigned(safeNumber(m.creditGap, 0) * 100, 1)}%p, 위험 과소평가 ${percent(safeNumber(m.riskUnderpricing, 0) * 100, 0)}`,
-        "자산버블": `주식 괴리 ${signedPercent(safeNumber(m.stockMispricing, 0))}, 주택 괴리 ${signedPercent(safeNumber(m.housingMispricing, 0))}`,
-        "은행불안": `은행건전성 ${round(safeNumber(m.bankHealthIndex, 100), 1).toFixed(1)}, 은행 간 신뢰 ${percent(safeNumber(m.interbankTrust, 0.84) * 100, 0)}`,
-        "외환불안": `환율지수 ${round(safeNumber(m.exchangeRateIndex, 100), 1).toFixed(1)}, 수입물가 ${round(safeNumber(m.importPriceIndex, 100), 1).toFixed(1)}`,
-        "재정압박": `부채/GDP ${percent(safeNumber(m.debtToGdpRatio, 0) * 100, 1)}, 재정여력 ${percent(safeNumber(m.fiscalSpaceScore, 0.7) * 100, 0)}`,
-        "인플레이션 기대불안": `기대물가 ${signedPercent(safeNumber(m.sentimentInflationExpectations, TARGET_INFLATION))}, 목표 신뢰 ${percent(safeNumber(m.inflationTargetCredibility, 0.8) * 100, 0)}`,
-        "계층 스트레스": `저소득 스트레스 ${percent(safeNumber(m.lowIncomeStress, 0) * 100, 0)}, 중산층 주거부담 ${percent(safeNumber(m.middleClassHousingBurden, 0), 1)}`,
-        "시장 실패": `실패유형 ${m.marketFailureType || "없음"}, 배분효율 ${percent(safeNumber(m.allocationQuality, 0.62) * 100, 0)}`
-      };
-      return reasons[label] || "위험 신호가 안정 범위입니다.";
+      return earlyWarningReasonLabelAnalysis(label, state.metrics || {}, { formatSigned, percent, signedPercent });
     }
 
     function updateVulnerabilitySystem() {
@@ -5338,39 +4777,6 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
       state.metrics.ratePathLabel = p.ratePathLabel || "중립";
     }
 
-    function giniCoefficient(values) {
-      const arr = values.map((v) => Math.max(0, safeNumber(v, 0))).sort((a, b) => a - b);
-      const n = arr.length;
-      const total = sum(arr);
-      if (!n || total <= 0) return 0;
-      let weighted = 0;
-      arr.forEach((value, index) => { weighted += (index + 1) * value; });
-      return clamp((2 * weighted) / (n * total) - (n + 1) / n, 0, 1);
-    }
-
-    function mostFrequent(values) {
-      const counts = new Map();
-      values.forEach((value) => counts.set(value, (counts.get(value) || 0) + 1));
-      let best = values[0] || "없음";
-      let bestCount = 0;
-      counts.forEach((count, value) => {
-        if (count > bestCount) {
-          best = value;
-          bestCount = count;
-        }
-      });
-      return best;
-    }
-
-    function creditRatingScore(rating) {
-      return rating === "A" ? 4 : rating === "BBB" ? 3 : rating === "BB" ? 2 : 1;
-    }
-
-    function sectorLabel(sector) {
-      const labels = { agriculture: "농업", services: "서비스업", manufacturing: "제조업", technology: "기술산업", financial: "금융업", energy: "에너지산업", construction: "건설·부동산업", staples: "필수소비재" };
-      return labels[sector] || "기타";
-    }
-
     function sectorStressValue(sector) {
       return clamp(safeNumber(state.metrics.sectorStress?.[sector]?.stress, 0), 0, 1);
     }
@@ -5401,41 +4807,6 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
       const corporate = safeNumber(state.metrics.corporateTaxCollected, 0) / total * 100;
       const vat = safeNumber(state.metrics.valueAddedTaxCollected, 0) / total * 100;
       return `소득 ${round(income, 0)}% · 법인 ${round(corporate, 0)}% · 부가 ${round(vat, 0)}%`;
-    }
-
-    function capacityLabel(value) {
-      const v = safeNumber(value, 1);
-      if (v >= 1.25) return "강함";
-      if (v >= 0.85) return "보통";
-      if (v >= 0.60) return "약함";
-      return "위험";
-    }
-
-    function creditRatingLabelFromScore(score) {
-      const s = safeNumber(score, 3);
-      if (s >= 3.65) return "A";
-      if (s >= 2.65) return "BBB";
-      if (s >= 1.65) return "BB";
-      return "취약";
-    }
-
-    function sentimentLabel(value, positive = true) {
-      const v = safeNumber(value, positive ? 0.7 : 0.3);
-      if (positive) {
-        if (v >= 0.82) return "강함";
-        if (v >= 0.58) return "보통";
-        if (v >= 0.36) return "약함";
-        return "위험";
-      }
-      return riskLabel(v);
-    }
-
-    function riskLabel(value) {
-      const v = safeNumber(value, 0);
-      if (v < 0.28) return "낮음";
-      if (v < 0.52) return "보통";
-      if (v < 0.74) return "높음";
-      return "위험";
     }
 
     function applySentimentToConsumers() {
@@ -6854,18 +6225,11 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
     }
 
     function hireConsumer(producer, consumer) {
-      if (!consumer || consumer.employed) return;
-      consumer.employed = true;
-      consumer.employerId = producer.id;
-      producer.employees.push(consumer.id);
-      producer.employees = unique(producer.employees);
+      return hireConsumerEngine(createLaborMarketContext(), producer, consumer);
     }
 
     function fireConsumer(producer, consumer) {
-      if (!consumer) return;
-      producer.employees = producer.employees.filter((id) => id !== consumer.id);
-      consumer.employed = false;
-      consumer.employerId = null;
+      return fireConsumerEngine(createLaborMarketContext(), producer, consumer);
     }
 
     function calculateUnemploymentRate() {
@@ -11522,6 +10886,7 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
     function explainMacroState() {
       if (explainMacroState.cached && state.tick > 0 && state.tick % 3 !== 0) {
         els.macroNarrative.innerHTML = explainMacroState.cached;
+        updateMacroFocusLine();
         renderPolicyRecommendations();
         return;
       }
@@ -11577,7 +10942,17 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
       `;
       explainMacroState.cached = narrative;
       els.macroNarrative.innerHTML = narrative;
+      updateMacroFocusLine(macroState);
       renderPolicyRecommendations(macroState);
+    }
+
+    function updateMacroFocusLine(macroState = null) {
+      if (!els.macroFocusLineValue) return;
+      const stateLabel = macroState?.state || state.metrics.macroStateLabel || getEconomyPhase();
+      const topWarning = state.earlyWarning?.topRisks?.[0];
+      const dominant = state.causalDecomposition?.dominant || state.metrics.causalDominant || "원인 신호 형성 중";
+      const warningText = topWarning ? `${topWarning.label} ${topWarning.level}` : "조기경보 안정";
+      setTextIfChanged(els.macroFocusLineValue, `${stateLabel} · 주된 압력: ${dominant} · 위험: ${warningText}`);
     }
 
     function explainTransmissionChain() {

@@ -228,6 +228,14 @@
         <div id="feedbackBanners" class="feedback-banners"></div>
       </section>
 
+      <section class="panel focus-strip" aria-label="현재 경제 흐름 요약">
+        <div>
+          <span class="eyebrow">현재 상태 한 줄 요약</span>
+          <strong id="macroFocusLineValue">안정 성장 기본값에서 시작합니다.</strong>
+        </div>
+        <small>추천 시작: 안정 성장 프리셋 → 12개월 실행 → 전달 경로 확인</small>
+      </section>
+
       <section class="kpi-grid">
         <article class="kpi">
           <span>GDP형 지출</span>
@@ -365,11 +373,11 @@
           <div class="model-lab-grid">
             <div id="modelInputs" class="model-inputs"></div>
             <div class="model-results">
-              <div id="modelResultSummary" class="selected-agent">모델을 선택하고 실행하면 결과가 표시됩니다.</div>
+              <div id="modelResultSummary" class="selected-agent"><strong>케인즈 승수 모형</strong><br>현재 경제 값을 불러오면 정부지출·세금·투자 변화가 총수요에 미치는 방향을 간단히 비교합니다.</div>
               <div class="model-chart-box">
                 <canvas id="modelChart"></canvas>
               </div>
-              <div id="modelInterpretation" class="selected-agent subtle">짧은 해석이 여기에 표시됩니다.</div>
+              <div id="modelInterpretation" class="selected-agent subtle">이 분석실은 교육용 단순화 모형입니다. 기본값은 케인즈 승수 모형이며, “현재 경제 사용” 또는 “분석 실행”으로 갱신됩니다.</div>
             </div>
           </div>
           <div class="model-comparison">
@@ -412,7 +420,7 @@
         <div id="earlyWarningSummaryValue" class="selected-agent">경제 신호가 누적되면 상위 위험 3개가 표시됩니다.</div>
       </details>
 
-      <details class="section" open>
+      <details class="section">
         <summary>원인 분해</summary>
         <div id="causalDecompositionValue" class="selected-agent">현재 변화를 설명하는 주요 압력이 표시됩니다.</div>
       </details>
@@ -500,10 +508,17 @@
       <details class="section" open>
         <summary>균형 진단</summary>
         <div id="diagBalanceSummaryValue" class="balance-summary">현재 안정적입니다.</div>
-        <ul class="metric-list compact" style="margin-top: 8px;">
+        <ul class="metric-list compact balance-diagnostics-core" style="margin-top: 8px;">
           <li><span>최근 20개월 평균 실업률</span><strong id="diagAvgUnemploymentValue">0.0%</strong></li>
           <li><span>최근 20개월 평균 물가상승률</span><strong id="diagAvgInflationValue">0.00%</strong></li>
           <li><span>최근 20개월 평균 GDP</span><strong id="diagAvgGdpValue">₩0</strong></li>
+          <li><span>재정 여력</span><strong id="diagFiscalSpaceValue">충분함</strong></li>
+          <li><span>금융시장 상태</span><strong id="diagFinancialMarketSummaryValue">정상</strong></li>
+          <li><span>은행위기 위험</span><strong id="diagBankingCrisisRiskValue">낮음</strong></li>
+        </ul>
+        <details class="mini-details">
+          <summary>균형 진단 전체 지표</summary>
+          <ul class="metric-list compact" style="margin-top: 8px;">
           <li><span>잠재 산출</span><strong id="diagPotentialOutputValue">₩0</strong></li>
           <li><span>산출갭</span><strong id="diagOutputGapValue">0.0%p</strong></li>
           <li><span>설비가동률</span><strong id="diagCapacityUtilizationValue">0.0%</strong></li>
@@ -520,7 +535,6 @@
           <li><span>정부지출 목표 / 실제</span><strong id="diagSpendingPolicyValue">₩0 / ₩0</strong></li>
           <li><span>정부 부채/GDP</span><strong id="diagDebtToGdpValue">0.0%</strong></li>
           <li><span>정부 이자비용</span><strong id="diagGovernmentDebtServiceValue">₩0</strong></li>
-          <li><span>재정 여력</span><strong id="diagFiscalSpaceValue">충분함</strong></li>
           <li><span>평균 가계 부채부담</span><strong id="diagHouseholdDebtBurdenValue">0.0%</strong></li>
           <li><span>평균 기업 DSCR</span><strong id="diagFirmDscrValue">0.00</strong></li>
           <li><span>부채 스트레스 가계</span><strong id="diagHouseholdDebtStressRatioValue">0.0%</strong></li>
@@ -528,11 +542,10 @@
           <li><span>자산 버블 위험</span><strong id="diagAssetBubbleRiskValue">낮음</strong></li>
           <li><span>주택구입부담</span><strong id="diagHousingAffordabilityValue">0.00</strong></li>
           <li><span>자산효과</span><strong id="diagWealthEffectValue">0.0%</strong></li>
-          <li><span>금융시장 상태</span><strong id="diagFinancialMarketSummaryValue">정상</strong></li>
           <li><span>국채금리</span><strong id="diagBondYieldValue">0.00%</strong></li>
           <li><span>신용스프레드</span><strong id="diagCreditSpreadValue">0.00%p</strong></li>
-          <li><span>은행위기 위험</span><strong id="diagBankingCrisisRiskValue">낮음</strong></li>
-        </ul>
+          </ul>
+        </details>
         <div id="diagWarningsValue" class="balance-warnings">경고 없음</div>
         <div class="balance-test-actions">
           <button id="balanceQuickTestBtn" class="btn secondary full" type="button">120개월 빠른 테스트</button>

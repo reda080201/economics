@@ -182,6 +182,24 @@
       border: 1px solid rgba(22, 48, 46, 0.08);
     }
 
+    .control-section {
+      border: 1px solid rgba(22, 48, 46, 0.10);
+      border-radius: 18px;
+      background: rgba(255, 250, 240, 0.48);
+      overflow: hidden;
+    }
+
+    .control-section > summary {
+      padding: 11px 12px;
+      font-size: 13px;
+    }
+
+    .control-section-body {
+      display: grid;
+      gap: 10px;
+      padding: 0 10px 10px;
+    }
+
     .control-row,
     .sim-actions,
     .balance-test-actions {
@@ -274,10 +292,46 @@
       gap: 10px;
     }
 
+    .focus-strip {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      padding: 13px 15px;
+      background:
+        linear-gradient(135deg, rgba(36, 113, 115, 0.12), rgba(255, 250, 240, 0.90)),
+        var(--card);
+    }
+
+    .focus-strip strong {
+      display: block;
+      margin-top: 3px;
+      font-size: 15px;
+      letter-spacing: -0.02em;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      width: fit-content;
+      color: var(--teal-dark);
+      font-size: 10px;
+      font-weight: 950;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
     .kpi {
       padding: 13px;
       min-height: 98px;
       box-shadow: 0 10px 24px rgba(40, 54, 45, 0.09);
+    }
+
+    .kpi.primary {
+      min-height: 106px;
+    }
+
+    .kpi.secondary {
+      min-height: 94px;
     }
 
     .kpi span {
@@ -419,6 +473,18 @@
 
     .metric-detail-group > .metric-list {
       padding: 0 10px 8px;
+    }
+
+    .mini-details {
+      margin-top: 8px;
+      border: 1px solid rgba(22, 48, 46, 0.10);
+      border-radius: 14px;
+      background: rgba(255, 250, 240, 0.42);
+      padding: 8px 10px;
+    }
+
+    .mini-details > summary {
+      font-size: 12px;
     }
 
     .explain,
@@ -624,6 +690,7 @@
 
       .dashboard,
       .kpi-grid,
+      .focus-strip,
       .charts-grid,
       .more-charts-grid,
       .model-lab-grid,
@@ -634,6 +701,11 @@
       .warning-grid {
         display: grid;
         grid-template-columns: 1fr;
+      }
+
+      .focus-strip {
+        display: grid;
+        align-items: start;
       }
 
       .topbar {

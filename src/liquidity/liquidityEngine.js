@@ -67,6 +67,10 @@ export function computeLiquidityMetrics(dataset = {}) {
     warnings: dataset.warnings || [],
     series: {}
   };
+  const totalSeries = Math.max(liquiditySeriesKeys.length, 1);
+  metrics.officialSeriesCount = metrics.loadedSeries.length;
+  metrics.fallbackSeriesCount = metrics.fallbackSeries.length;
+  metrics.dataConfidence = clamp(metrics.officialSeriesCount / totalSeries, 0, 1);
 
   liquiditySeriesKeys.forEach((key) => {
     metrics.series[key] = computeSeriesMetrics(dataset.series?.[key] || []);
@@ -81,7 +85,9 @@ export function computeLiquidityMetrics(dataset = {}) {
   return metrics;
 }
 
-function computeSeriesMetrics(series = []) {
+function computeSeriesMetrics(series = [], options = {}) {
+  const longWindow = Math.max(2, Math.round(safeNumber(options.longWindow, 60)));
+  const shortWindow = Math.max(2, Math.round(safeNumber(options.shortWindow, 36)));
   const clean = series
     .filter((point) => point && Number.isFinite(Number(point.value)))
     .map((point) => ({ ...point, value: Number(point.value) }))
@@ -89,12 +95,8 @@ function computeSeriesMetrics(series = []) {
   const latestPoint = clean[clean.length - 1] || { date: "", value: 0 };
   const values = clean.map((point) => point.value);
   const latest = safeNumber(latestPoint.value, 0);
-  const windowValues = values.slice(-36);
-  const mean = average(windowValues);
-  const variance = windowValues.length
-    ? average(windowValues.map((value) => (value - mean) ** 2))
-    : 0;
-  const std = Math.sqrt(Math.max(variance, 0));
+  const zScore60 = computeWindowZScore(values, latest, longWindow);
+  const zScore36 = computeWindowZScore(values, latest, shortWindow);
   const peak = values.length ? Math.max(...values) : latest;
   return {
     date: latestPoint.date || "",
@@ -104,10 +106,24 @@ function computeSeriesMetrics(series = []) {
       m3: percentageChange(clean, 3),
       m6: percentageChange(clean, 6)
     },
-    zScore: std > 0.000001 ? clamp((latest - mean) / std, -5, 5) : 0,
+    zScore: zScore60,
+    zScore60,
+    zScore36,
+    zScoreWindow: longWindow,
+    shortZScoreWindow: shortWindow,
     drawdown: peak > 0 ? clamp(latest / peak - 1, -1, 0) : 0,
     observations: clean.length
   };
+}
+
+function computeWindowZScore(values, latest, windowSize) {
+  const windowValues = values.slice(-windowSize);
+  const mean = average(windowValues);
+  const variance = windowValues.length
+    ? average(windowValues.map((value) => (value - mean) ** 2))
+    : 0;
+  const std = Math.sqrt(Math.max(variance, 0));
+  return std > 0.000001 ? clamp((latest - mean) / std, -5, 5) : 0;
 }
 
 function percentageChange(series, lag) {
@@ -124,11 +140,21 @@ function computeFedNetLiquiditySeries(seriesMap) {
   const rrp = seriesMap.rrp || [];
   return walcl.map((point, index) => ({
     date: point.date,
-    value: safeNumber(point.value, 0) - safeNumber(tga[index]?.value, 0) - safeNumber(rrp[index]?.value, 0),
+    value: normalizeLiquidityUnit("walcl", point.value)
+      - normalizeLiquidityUnit("tga", tga[index]?.value)
+      - normalizeLiquidityUnit("rrp", rrp[index]?.value),
     source: "derived",
     seriesCode: "FED_NET_LIQUIDITY",
     label: "Fed 순유동성"
   }));
+}
+
+function normalizeLiquidityUnit(key, value) {
+  const numeric = safeNumber(value, 0);
+  if (key === "rrp" || key === "m2" || key === "bankDeposits" || key === "moneyMarketFunds") {
+    return numeric * 1000;
+  }
+  return numeric;
 }
 
 function createFallbackLiquiditySeries(key, dates) {
