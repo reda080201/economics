@@ -1,6 +1,9 @@
+import { CALIBRATION, TARGET_INFLATION } from "../core/config.js";
+import { applyInertia, clamp, rand, safeNumber, smoothValue } from "../core/mathUtils.js";
+
 // 고용자 수와 생산성이 재고 증가로 이어지며, 공급 충격은 생산량을 낮춘다.
 export function produceGoods(context) {
-  const { state, clamp, rand, safeNumber, smoothValue } = context;
+  const { state } = context;
   state.producers.forEach((producer) => {
     // 생산계획은 최대 생산능력이 아니라 기대수요와 적정 재고버퍼(약 1.2개월)를 기준으로 부분 조정된다.
     const targetInventory = Math.max(8, producer.expectedDemand * 1.2);
@@ -55,14 +58,9 @@ export function produceGoods(context) {
 export function computePriceChange(context, producer, observedDemand) {
   const {
     state,
-    CALIBRATION,
-    TARGET_INFLATION,
-    clamp,
     computeInflationResponseSignal,
     effectiveBaseWage,
-    getGDPGrowthWindow,
-    safeNumber,
-    smoothValue
+    getGDPGrowthWindow
   } = context;
   const targetInventory = clamp(producer.expectedDemand * 1.85 + 9, 8, producer.productionCapacity * 4.2);
   const inventoryRatio = producer.inventory / Math.max(1, targetInventory);
@@ -116,12 +114,8 @@ export function computePriceChange(context, producer, observedDemand) {
 export function adjustProducerPricesAndExpectations(context) {
   const {
     state,
-    TARGET_INFLATION,
     applyEquilibriumGravity,
-    applyInertia,
-    clamp,
-    getGDPGrowthWindow,
-    safeNumber
+    getGDPGrowthWindow
   } = context;
   const drivers = { demandPull: 0, costPush: 0, shortage: 0, expectations: 0 };
   const equilibriumGravity = applyEquilibriumGravity();

@@ -1,5 +1,8 @@
+import { MAX_WAGE_CHANGE_PER_TICK, TICKS_PER_MONTH } from "../core/config.js";
+import { applyInertia, clamp, rand, safeNumber, shuffle, smoothValue, unique } from "../core/mathUtils.js";
+
 export function fireShareOfWorkers(context, share) {
-  const { state, shuffle } = context;
+  const { state } = context;
   const employedConsumers = shuffle(state.consumers.filter((consumer) => consumer.employed));
   const fireCount = Math.floor(employedConsumers.length * share);
   for (let i = 0; i < fireCount; i += 1) {
@@ -13,19 +16,11 @@ export function fireShareOfWorkers(context, share) {
 export function updateLaborMarket(context) {
   const {
     state,
-    TICKS_PER_MONTH,
-    MAX_WAGE_CHANGE_PER_TICK,
     applyEquilibriumGravity,
-    applyInertia,
     calculateUnemploymentRate,
-    clamp,
     computeLaborResponseSignal,
     createInitialSentimentState,
-    effectiveBaseWage,
-    rand,
-    safeNumber,
-    shuffle,
-    smoothValue
+    effectiveBaseWage
   } = context;
   const unemploymentRate = calculateUnemploymentRate() / 100;
   const availableWorkers = () => shuffle(state.consumers.filter((consumer) => !consumer.employed));
@@ -217,7 +212,7 @@ export function updateLaborMarket(context) {
 
 // 기업은 고용된 소비자에게 임금을 지급하고, 정부는 임금세를 걷는다.
 export function payWages(context) {
-  const { state, TICKS_PER_MONTH, clamp, recordFlow, unique } = context;
+  const { state, recordFlow } = context;
   state.producers.forEach((producer) => {
     const remainingEmployees = [];
 
@@ -269,7 +264,6 @@ export function payWages(context) {
 }
 
 export function hireConsumer(context, producer, consumer) {
-  const { unique } = context;
   if (!consumer || consumer.employed) return;
   consumer.employed = true;
   consumer.employerId = producer.id;

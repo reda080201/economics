@@ -19,13 +19,10 @@ import {
   TARGET_UNEMPLOYMENT,
   TICKS_PER_MONTH
 } from "./core/config.js";
-import { createSectorState } from "./core/sectorState.js";
-import { createFlowLedger } from "./core/flowLedger.js";
-import { cloneModelParameters, defaultModelParameters } from "./core/modelParameters.js";
+import { defaultModelParameters } from "./core/modelParameters.js";
 import {
   applyInertia,
   average,
-  calculateGini,
   clamp,
   computeNonlinearStress,
   escapeHtml,
@@ -58,6 +55,7 @@ import {
   compareCoreStateSignature as compareCoreStateSignatureRuntime,
   restoreSimulationSnapshot as restoreSimulationSnapshotRuntime
 } from "./core/simulationRuntime.js";
+import { resetSimulationState } from "./core/resetSimulation.js";
 import { calibrateParameters } from "./core/calibration.js";
 import { runBacktest } from "./core/backtest.js";
 import { runMonteCarloScenario } from "./core/monteCarlo.js";
@@ -104,6 +102,10 @@ import {
   computePriceChange as computePriceChangeEngine,
   produceGoods as produceGoodsEngine
 } from "./economy/production.js";
+import {
+  computeGDP as computeGDPEngine,
+  updateMacroMetricsEngine
+} from "./economy/macroMetrics.js";
 import { scenarioSelectGroups } from "./scenarios/presets.js";
 import { hydrateScenarioSelect } from "./ui/controls.js";
 import {
@@ -116,6 +118,7 @@ import {
   updateModelReliabilityPanel as updateModelReliabilityPanelView
 } from "./ui/dataLab.js";
 import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquidityRadar.js";
+import { updateInspectorPanel } from "./ui/inspector.js";
 
 "use strict";
 
@@ -829,38 +832,22 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
     function createLaborMarketContext() {
       return {
         state,
-        TICKS_PER_MONTH,
-        MAX_WAGE_CHANGE_PER_TICK,
         applyEquilibriumGravity,
-        applyInertia,
         calculateUnemploymentRate,
-        clamp,
         computeLaborResponseSignal,
         createInitialSentimentState,
         effectiveBaseWage,
-        rand,
-        recordFlow,
-        safeNumber,
-        shuffle,
-        smoothValue,
-        unique
+        recordFlow
       };
     }
 
     function createProductionContext() {
       return {
         state,
-        CALIBRATION,
-        TARGET_INFLATION,
         applyEquilibriumGravity,
-        applyInertia,
-        clamp,
         computeInflationResponseSignal,
         effectiveBaseWage,
-        getGDPGrowthWindow,
-        rand,
-        safeNumber,
-        smoothValue
+        getGDPGrowthWindow
       };
     }
 
@@ -942,113 +929,59 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
     // ===== 에이전트 생성과 리셋 =====
     // 인구 수나 기업 수가 바뀌면 에이전트를 새로 만들고 모든 누적 상태를 초기화한다.
     function resetSimulation() {
-      state.config = readConfigFromControls();
-      state.tick = 0;
-      state.consumers = createConsumers(state.config.consumerCount);
-      state.producers = createProducers(state.config.producerCount);
-      state.assetMarket = createInitialAssetMarket();
-      state.realEstate = createInitialRealEstateMarket();
-      state.financialMarket = createInitialFinancialMarket(state.config);
-      state.creditCycle = createInitialCreditCycle();
-      state.macroFinancial = createInitialMacroFinancialTransmission(state.config);
-      state.classAnalysis = createInitialClassAnalysis();
-      state.vulnerabilities = createInitialVulnerabilityState();
-      state.sentiment = createInitialSentimentState();
-      state.information = createInitialInformationSystem();
-      state.behavior = createInitialBehavioralState();
-      state.external = createInitialExternalSector();
-      state.externalActors = createInitialExternalActors();
-      state.marketOutcome = createInitialMarketOutcome();
-      state.causalDecomposition = createInitialCausalDecomposition();
-      state.earlyWarning = createInitialEarlyWarning();
-      state.historicalScenario = createInitialHistoricalScenario();
-      state.policyCredibility = createInitialPolicyCredibility();
-      state.perceived = createInitialPerceivedEconomy();
-      state.sectorState = createSectorState();
-      state.flowLedger = createFlowLedger();
-      state.modelParameters = cloneModelParameters(defaultModelParameters);
-      state.modelReliability = createInitialModelReliability();
-      state.calibrationDataset = null;
-      state.scale = createInitialScale(state.config);
-      state.government = {
-        taxRate: state.config.householdIncomeTaxRate,
-        householdIncomeTaxRate: state.config.householdIncomeTaxRate,
-        corporateTaxRate: state.config.corporateTaxRate,
-        valueAddedTaxRate: state.config.valueAddedTaxRate,
-        interestRate: state.config.interestRate,
-        spending: state.config.governmentSpending,
-        effectiveSpending: state.config.governmentSpending,
-        taxCollectedTick: 0,
-        householdIncomeTaxCollectedTick: 0,
-        corporateTaxCollectedTick: 0,
-        valueAddedTaxCollectedTick: 0,
-        spendingActualTick: 0,
-        debtServiceTick: 0,
-        supportTick: 0,
-        procurementTick: 0,
-        subsidyTick: 0,
-        publicServicesTick: 0,
-        balance: 0,
-        debt: 8500,
-        debtToGdpRatio: 0,
-        fiscalSpaceScore: 1,
-        fiscalSpaceLabel: "충분함"
-      };
-      initializePolicyState(state.config);
-      state.rates = createInitialRateStructure(state.config);
-      state.metrics = createEmptyMetrics();
-      state.history = [];
-      state.flows = [];
-      state.events = [];
-      state.markers = [];
-      state.selected = null;
-      state.hovered = null;
-      state.debug.lastSuccessfulTickTime = performance.now();
-      state.debug.suppressVisualUpdates = false;
-      resetGameStateForCurrentMode();
-      state.shock = {
-        label: "충격 없음",
-        ticksRemaining: 0,
-        demandMultiplier: 1,
-        productivityMultiplier: 1,
-        pricePressure: 0
-      };
-      assignInitialEmployment();
-      applyGameModeStartingConditions();
-      state.config = readConfigFromControls();
-      initializePolicyState(state.config);
-      state.rates = createInitialRateStructure(state.config);
-      state.producers.forEach((producer) => {
-        producer.longRunPrice = producer.price;
-        producer.smoothedTargetEmployees = producer.employees.length;
-      });
-      state.previousAveragePrice = average(state.producers.map((producer) => producer.price));
-      state.previousAverageWage = average(state.producers.map((producer) => producer.wageOffered));
-      state.potentialOutputEstimate = state.metrics.gdp || 1;
-      state.financialConditionIndex = state.government.interestRate * 100;
-      state.smoothedInflation = 0;
-      state.smoothedWageGrowth = 0;
-      state.priceDrivers = {
-        demandPull: 0,
-        costPush: 0,
-        shortage: 0,
-        expectations: 0
-      };
-      updateMacroMetrics();
-      updateMacroFinancialTransmission();
-      updatePerceivedEconomy();
-      updateExpectationsSystem();
-      updateSentimentSystem();
-      updateBehavioralSystem();
-      updateGameSummaryStats();
-      computeScore();
-      updateObjectives();
+      resetSimulationState(createResetSimulationContext());
       clearCharts();
       pushEvent("새 경제가 생성되었습니다. 시작 버튼을 누르거나 1단계씩 진행해 보세요.");
       safeUpdateAllDisplays();
       if (els.modelSelector) runSelectedEconomicModel();
       updateRunState();
       safeRenderSimulation(performance.now());
+    }
+
+    function createResetSimulationContext() {
+      return {
+        state,
+        average,
+        readConfigFromControls,
+        createConsumers,
+        createProducers,
+        createInitialAssetMarket,
+        createInitialRealEstateMarket,
+        createInitialFinancialMarket,
+        createInitialCreditCycle,
+        createInitialMacroFinancialTransmission,
+        createInitialClassAnalysis,
+        createInitialVulnerabilityState,
+        createInitialSentimentState,
+        createInitialInformationSystem,
+        createInitialBehavioralState,
+        createInitialExternalSector,
+        createInitialExternalActors,
+        createInitialMarketOutcome,
+        createInitialCausalDecomposition,
+        createInitialEarlyWarning,
+        createInitialHistoricalScenario,
+        createInitialPolicyCredibility,
+        createInitialPerceivedEconomy,
+        createInitialModelReliability,
+        createInitialScale,
+        initializePolicyState,
+        createInitialRateStructure,
+        createEmptyMetrics,
+        resetGameStateForCurrentMode,
+        assignInitialEmployment,
+        applyGameModeStartingConditions,
+        updateMacroMetrics,
+        updateMacroFinancialTransmission,
+        updatePerceivedEconomy,
+        updateExpectationsSystem,
+        updateSentimentSystem,
+        updateBehavioralSystem,
+        updateGameSummaryStats,
+        computeScore,
+        updateObjectives,
+        now: () => performance.now()
+      };
     }
 
     function createInitialScale(config = {}) {
@@ -3068,191 +3001,27 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
     // ===== 거시지표 집계 =====
     // 개별 에이전트 행동을 GDP형 지출, 실업률, 평균 가격, 재정수지로 집계한다.
     function updateMacroMetrics() {
-      const averagePriceRaw = average(state.producers.map((producer) => producer.price));
-      const rawInflation = state.previousAveragePrice > 0
-        ? ((averagePriceRaw - state.previousAveragePrice) / state.previousAveragePrice) * 100
-        : 0;
-      const currentUnemploymentForAnchor = calculateUnemploymentRate();
-      const inflationAnchor = currentUnemploymentForAnchor < 10 && getGDPGrowthWindow() > -4
-        ? clamp((TARGET_INFLATION - state.smoothedInflation) * 1.45, -0.10, 2.20)
-        : clamp((TARGET_INFLATION - state.smoothedInflation) * 0.25, -0.08, 0.45);
-      state.smoothedInflation = clamp(smoothValue(state.smoothedInflation, rawInflation + inflationAnchor, 0.20), -4.5, 7.5);
-      state.previousAveragePrice = averagePriceRaw;
-
-      const employedCount = state.consumers.filter((consumer) => consumer.employed).length;
-      const productionValue = state.metrics.productionUnits * averagePriceRaw;
-      const gdpLike = computeGDP();
-      const averageHouseholdCash = average(state.consumers.map((consumer) => consumer.cash));
-      const averageFirmCash = average(state.producers.map((producer) => producer.cash));
-      const totalInventory = sum(state.producers.map((producer) => producer.inventory));
-      const averageFirmProfit = average(state.producers.map((producer) => producer.lastProfit));
-      const householdDebt = sum(state.consumers.map((consumer) => consumer.debt));
-      const firmDebt = sum(state.producers.map((producer) => producer.debt));
-      const averageHouseholdDebtBurden = average(state.consumers.map((consumer) => safeNumber(consumer.debtBurden, 0))) * 100;
-      const averageFirmDSCR = average(state.producers.map((producer) => clamp(safeNumber(producer.dscr, 99), 0, 8)));
-      const debtStressedHouseholdRatio = state.consumers.length
-        ? state.consumers.filter((consumer) => consumer.financiallyStressed || safeNumber(consumer.debtBurden, 0) > 0.22).length / state.consumers.length * 100
-        : 0;
-      const debtStressedFirmRatio = state.producers.length
-        ? state.producers.filter((producer) => producer.financialStressCategory === "stressed" || producer.financialStressCategory === "distressed").length / state.producers.length * 100
-        : 0;
-      const averageWage = employedCount > 0 ? state.metrics.wages / employedCount : average(state.producers.map((producer) => producer.wageOffered));
-      const rawWageGrowth = state.previousAverageWage > 0
-        ? ((averageWage - state.previousAverageWage) / state.previousAverageWage) * 100
-        : 0;
-      state.smoothedWageGrowth = clamp(smoothValue(state.smoothedWageGrowth, rawWageGrowth, 0.18), -2.5, 4.5);
-      state.previousAverageWage = averageWage;
-      const totalDebtService = sum(state.consumers.map((consumer) => consumer.debtServiceTick)) + sum(state.producers.map((producer) => producer.interestCostTick));
-      const incomeBase = Math.max(1, state.metrics.wages + state.metrics.consumption + state.metrics.governmentTransfers);
-      const averageDebtStress = average(state.consumers.map((consumer) => consumer.debtStress));
-      const averageFirmDebtStress = average(state.producers.map((producer) => producer.debtStress));
-      const salesPressure = state.metrics.unitsSold / Math.max(1, state.metrics.productionUnits);
-      const inventoryToDemand = totalInventory / Math.max(1, sum(state.producers.map((producer) => producer.expectedDemand)));
-      const potential = computePotentialOutputIndicators(gdpLike, averagePriceRaw, employedCount);
-
-      const governmentDebtService = clamp(safeNumber(state.government.debtServiceTick, 0), 0, 1000000);
-      state.government.balance = state.government.taxCollectedTick - state.government.spendingActualTick - governmentDebtService;
-      if (state.government.balance < 0) {
-        state.government.debt = clamp(state.government.debt - state.government.balance, 0, 10000000);
-      } else {
-        state.government.debt = clamp(state.government.debt - state.government.balance * 0.55, 0, 10000000);
-      }
-      const annualizedGdpBase = Math.max(1, gdpLike * TICKS_PER_MONTH * 12);
-      const debtToGdpRatio = state.government.debt / annualizedGdpBase;
-      const deficitRatio = Math.max(0, -state.government.balance) / Math.max(1, gdpLike);
-      const debtServiceRatio = governmentDebtService / Math.max(1, state.government.taxCollectedTick + state.government.spendingActualTick * 0.35);
-      const fiscalSpaceScore = clamp(1 - debtToGdpRatio / 1.8 - debtServiceRatio * 0.55 - deficitRatio * 0.55, 0, 1);
-      const fiscalSpaceLabel = fiscalSpaceScore > 0.68 ? "충분함" : fiscalSpaceScore > 0.45 ? "주의" : fiscalSpaceScore > 0.22 ? "제한적" : "위험";
-      state.government.debtToGdpRatio = debtToGdpRatio;
-      state.government.fiscalSpaceScore = fiscalSpaceScore;
-      state.government.fiscalSpaceLabel = fiscalSpaceLabel;
-
-      state.metrics.gdp = gdpLike;
-      state.metrics.outputValue = productionValue;
-      state.metrics.unemploymentRate = (1 - employedCount / Math.max(1, state.consumers.length)) * 100;
-      state.metrics.employedCount = employedCount;
-      state.metrics.averagePrice = averagePriceRaw;
-      state.metrics.inflation = state.smoothedInflation;
-      state.metrics.governmentBalance = state.government.balance;
-      state.metrics.governmentDebt = state.government.debt;
-      state.metrics.averageHouseholdCash = averageHouseholdCash;
-      state.metrics.averageFirmCash = averageFirmCash;
-      state.metrics.averageConfidence = average(state.consumers.map((consumer) => consumer.confidence));
-      state.metrics.totalInventory = totalInventory;
-      state.metrics.householdIncomeTaxCollected = state.government.householdIncomeTaxCollectedTick;
-      state.metrics.corporateTaxCollected = state.government.corporateTaxCollectedTick;
-      state.metrics.valueAddedTaxCollected = state.government.valueAddedTaxCollectedTick;
-      state.metrics.totalTaxCollected = state.government.taxCollectedTick;
-      state.metrics.taxCollected = state.government.taxCollectedTick;
-      updateTaxSentimentMetrics();
-      state.metrics.governmentSpendingActual = state.government.spendingActualTick;
-      state.metrics.governmentDebtService = governmentDebtService;
-      state.metrics.debtToGdpRatio = debtToGdpRatio;
-      state.metrics.fiscalSpaceScore = fiscalSpaceScore;
-      state.metrics.fiscalSpaceLabel = fiscalSpaceLabel;
-      state.metrics.averageWage = averageWage;
-      state.metrics.wageGrowth = state.smoothedWageGrowth;
-      state.metrics.realWageGrowth = state.smoothedWageGrowth - state.smoothedInflation;
-      state.metrics.averageFirmProfit = averageFirmProfit;
-      state.metrics.householdDebt = householdDebt;
-      state.metrics.firmDebt = firmDebt;
-      state.metrics.debtServiceBurden = (totalDebtService / incomeBase) * 100;
-      state.metrics.householdDebtStress = averageDebtStress;
-      state.metrics.firmDebtStress = averageFirmDebtStress;
-      state.metrics.averageHouseholdDebtBurden = averageHouseholdDebtBurden;
-      state.metrics.averageFirmDSCR = averageFirmDSCR;
-      state.metrics.debtStressedHouseholdRatio = debtStressedHouseholdRatio;
-      state.metrics.debtStressedFirmRatio = debtStressedFirmRatio;
-      state.metrics.financiallyStressedConsumers = state.consumers.filter((consumer) => consumer.financiallyStressed).length;
-      state.metrics.financiallyStressedFirms = state.producers.filter((producer) => producer.financiallyStressed).length;
-      state.metrics.averageBusinessOutlook = average(state.producers.map((producer) => producer.businessOutlook));
-      state.metrics.demandPullPressure = state.priceDrivers.demandPull * 100;
-      state.metrics.costPushPressure = state.priceDrivers.costPush * 100;
-      state.metrics.shortagePressure = state.priceDrivers.shortage * 100;
-      state.metrics.inflationExpectationPressure = state.priceDrivers.expectations * 100;
-      state.metrics.salesPressure = salesPressure;
-      state.metrics.inventoryToDemand = inventoryToDemand;
-      state.metrics.potentialOutput = potential.potentialOutput;
-      state.metrics.outputGap = potential.outputGap;
-      state.metrics.capacityUtilization = potential.capacityUtilization;
-      state.metrics.unemploymentGap = state.metrics.unemploymentRate - TARGET_UNEMPLOYMENT;
-      state.metrics.inflationGap = state.metrics.inflation - TARGET_INFLATION;
-      state.metrics.financialConditionIndex = updateFinancialConditionIndex();
-      syncRateMetrics();
-      const asset = state.assetMarket || createInitialAssetMarket();
-      state.metrics.stockIndex = safeNumber(asset.stockIndex, 100);
-      state.metrics.stockIndexPoints = safeNumber(asset.stockIndexPoints, 2500);
-      state.metrics.housingIndex = safeNumber(asset.housingIndex, 100);
-      state.metrics.stockReturn = safeNumber(asset.stockReturn, 0) * 100;
-      state.metrics.stockMonthlyReturn = safeNumber(asset.stockMonthlyReturn, safeNumber(asset.stockReturn, 0) * TICKS_PER_MONTH) * 100;
-      state.metrics.stockVolatility = safeNumber(asset.stockVolatility, 0.015) * 100;
-      state.metrics.stockVolatilityLabel = stockVolatilityLabel(asset.stockVolatility);
-      state.metrics.stockValuationPressure = safeNumber(asset.stockValuationPressure, 0);
-      state.metrics.stockValuationPressureLabel = asset.stockValuationPressureLabel || valuationPressureLabel(asset.stockValuationPressure);
-      state.metrics.stockRiskSentiment = safeNumber(asset.stockRiskSentiment, 0.65);
-      state.metrics.stockRiskSentimentLabel = asset.stockRiskSentimentLabel || stockRiskSentimentLabel(asset.stockRiskSentiment);
-      state.metrics.fearGreedIndex = safeNumber(asset.fearGreedIndex, 50);
-      state.metrics.fearGreedLabel = asset.fearGreedLabel || fearGreedLabel(asset.fearGreedIndex);
-      state.metrics.stockVolatilityIndex = safeNumber(asset.stockVolatilityIndex, 18);
-      state.metrics.stockVolatilityIndexLabel = asset.stockVolatilityIndexLabel || stockVolatilityIndexLabel(asset.stockVolatilityIndex);
-      state.metrics.expectedEarningsGrowth = safeNumber(asset.expectedEarningsGrowth, 0) * 100;
-      state.metrics.expectedRatePath = state.metrics.expectedRatePath || safeNumber(asset.expectedRatePath, 0) * 100;
-      state.metrics.expectedRiskPremium = safeNumber(asset.expectedRiskPremium, 0.04) * 100;
-      state.metrics.stockExpectation = safeNumber(asset.stockExpectation, 0) * 100;
-      state.metrics.stockDrawdown = safeNumber(asset.stockDrawdownFromPeak, 0) * 100;
-      state.metrics.housingReturn = safeNumber(asset.housingReturn, 0) * 100;
-      state.metrics.wealthEffect = safeNumber(asset.wealthEffect, 0) * 100;
-      state.metrics.housingAffordability = safeNumber(state.realEstate?.housingAffordability, asset.housingAffordability || 1);
-      state.metrics.averageMortgageBurden = safeNumber(asset.averageMortgageBurden, 0);
-      state.metrics.negativeEquityRatio = safeNumber(asset.negativeEquityRatio, 0);
-      state.metrics.assetBubbleRiskScore = safeNumber(asset.assetBubbleRisk, 0);
-      state.metrics.assetBubbleRiskLabel = asset.assetBubbleRiskLabel || "낮음";
-      syncFinancialMarketMetrics();
-      state.metrics.gini = calculateGini(state.consumers.map((consumer) => consumer.cash));
+      return updateMacroMetricsEngine(createMacroMetricsContext());
     }
 
     function computeGDP() {
-      return state.metrics.consumption + state.metrics.investment + state.metrics.governmentGDPSpending;
+      return computeGDPEngine(state);
     }
 
-    function updateTaxSentimentMetrics() {
-      const incomeTax = clamp(safeNumber(state.government.householdIncomeTaxRate, 0.16), 0, 0.60);
-      const corporateTax = clamp(safeNumber(state.government.corporateTaxRate, 0.18), 0, 0.60);
-      const vat = clamp(safeNumber(state.government.valueAddedTaxRate, 0.10), 0, 0.35);
-      const lowStress = safeNumber(state.metrics.lowIncomeStress, 0);
-      const firmStress = state.producers.length
-        ? state.producers.filter((producer) => producer.firmStrategy === "배당·자사주형" && safeNumber(producer.investmentConversionRate, 0) < 0.22).length / state.producers.length
-        : 0;
-      state.metrics.householdTaxPressure = clamp(incomeTax * 1.35 + vat * 1.10 + safeNumber(state.metrics.middleClassMortgageStress, 0) * 0.18, 0, 1);
-      state.metrics.consumptionTaxPain = clamp(vat * 2.2 + lowStress * 0.35 + Math.max(0, state.metrics.inflationGap) * 0.035, 0, 1);
-      state.metrics.corporateTaxPressure = clamp(corporateTax * 1.45 + safeNumber(state.metrics.firmDebtStress, 0) * 0.16, 0, 1);
-      state.metrics.taxPolicyCredibility = clamp(0.82 - Math.max(0, incomeTax - 0.28) * 0.55 - Math.max(0, corporateTax - 0.30) * 0.48 - Math.max(0, vat - 0.14) * 0.62 - firmStress * 0.12, 0, 1);
-      const allocatedCash = Math.max(1, state.metrics.buybackDividendSpending + state.metrics.debtRepaymentAllocation + state.metrics.retainedEarningsAllocation);
-      state.metrics.buybackPayoutRatio = state.metrics.buybackDividendSpending / allocatedCash;
-      state.metrics.investmentConversionRate = smoothValue(safeNumber(state.metrics.investmentConversionRate, 0), state.metrics.retainedEarningsAllocation / allocatedCash, 0.14);
-      state.metrics.taxSentimentScore = clamp(state.metrics.householdTaxPressure * 0.32 + state.metrics.consumptionTaxPain * 0.28 + state.metrics.corporateTaxPressure * 0.22 + (1 - state.metrics.taxPolicyCredibility) * 0.18, 0, 1);
-      state.metrics.taxSentimentLabel = state.metrics.taxSentimentScore < 0.28 ? "낮음" : state.metrics.taxSentimentScore < 0.52 ? "보통" : state.metrics.taxSentimentScore < 0.74 ? "높음" : "위험";
-    }
-
-    function computePotentialOutputIndicators(actualGDP, averagePrice, employedCount) {
-      const unemploymentRate = (1 - employedCount / Math.max(1, state.consumers.length)) * 100;
-      const unemploymentGap = unemploymentRate - TARGET_UNEMPLOYMENT;
-      const expectedDemand = sum(state.producers.map((producer) => producer.expectedDemand));
-      const inventoryDemandRatio = sum(state.producers.map((producer) => producer.inventory)) / Math.max(1, expectedDemand);
-      const productionDemandRatio = state.metrics.productionUnits / Math.max(1, expectedDemand);
-      const capacityUtilization = clamp(
-        83 + (productionDemandRatio - 0.85) * 18 - Math.max(0, inventoryDemandRatio - 1.8) * 5 + Math.max(0, -unemploymentGap) * 0.45,
-        55,
-        105
-      );
-      const potentialMultiplier = clamp(1 + unemploymentGap * 0.014 - Math.max(0, state.smoothedInflation - TARGET_INFLATION) * 0.006, 0.90, 1.14);
-      const targetPotentialOutput = Math.max(1, actualGDP * potentialMultiplier);
-      state.potentialOutputEstimate = smoothValue(safeNumber(state.potentialOutputEstimate, targetPotentialOutput), targetPotentialOutput, 0.08);
-      const potentialOutput = clamp(state.potentialOutputEstimate, Math.max(1, actualGDP * 0.82), Math.max(1, actualGDP * 1.18));
+    function createMacroMetricsContext() {
       return {
-        potentialOutput,
-        outputGap: ((actualGDP - potentialOutput) / Math.max(1, potentialOutput)) * 100,
-        capacityUtilization
+        state,
+        calculateUnemploymentRate,
+        getGDPGrowthWindow,
+        updateFinancialConditionIndex,
+        syncRateMetrics,
+        createInitialAssetMarket,
+        stockVolatilityLabel,
+        valuationPressureLabel,
+        stockRiskSentimentLabel,
+        fearGreedLabel,
+        stockVolatilityIndexLabel,
+        syncFinancialMarketMetrics
       };
     }
 
@@ -8127,156 +7896,51 @@ import { runLiquidityRadarMode as runLiquidityRadarModePanel } from "./ui/liquid
     }
 
     function updateInspector() {
-      els.taxCollectedValue.textContent = macroMoney(state.metrics.taxCollected);
-      els.householdIncomeTaxValue.textContent = macroMoney(state.metrics.householdIncomeTaxCollected);
-      els.corporateTaxCollectedValue.textContent = macroMoney(state.metrics.corporateTaxCollected);
-      els.vatRevenueValue.textContent = macroMoney(state.metrics.valueAddedTaxCollected);
-      els.taxCompositionValue.textContent = taxCompositionLabel();
-      setSentimentPill(els.taxSentimentValue, state.metrics.taxSentimentLabel || "보통", state.metrics.taxSentimentScore > 0.52);
-      els.spendingActualValue.textContent = macroMoney(state.metrics.governmentSpendingActual);
-      els.governmentDebtServiceValue.textContent = macroMoney(state.metrics.governmentDebtService);
-      els.debtToGdpValue.textContent = percent(state.metrics.debtToGdpRatio * 100, 1);
-      els.fiscalSpaceValue.textContent = state.metrics.fiscalSpaceLabel;
-      els.wagesValue.textContent = macroMoney(state.metrics.wages);
-      els.unitsSoldValue.textContent = round(state.metrics.unitsSold, 1).toLocaleString("ko-KR");
-      els.unitsProducedValue.textContent = round(state.metrics.productionUnits, 1).toLocaleString("ko-KR");
-      els.giniValue.textContent = round(state.metrics.gini, 2).toFixed(2);
-      els.householdDebtValue.textContent = macroMoney(state.metrics.householdDebt);
-      els.firmDebtValue.textContent = macroMoney(state.metrics.firmDebt);
-      els.debtBurdenValue.textContent = percent(state.metrics.debtServiceBurden, 1);
-      els.firmDscrValue.textContent = round(state.metrics.averageFirmDSCR, 2).toFixed(2);
-      els.incomeInequalityValue.textContent = round(state.metrics.incomeInequality, 2).toFixed(2);
-      els.wealthInequalityValue.textContent = round(state.metrics.wealthInequality, 2).toFixed(2);
-      setSentimentPill(els.lowIncomeConsumptionCapacityValue, capacityLabel(state.metrics.lowIncomeConsumptionCapacity), state.metrics.lowIncomeConsumptionCapacity < 0.75);
-      els.middleClassHousingBurdenValue.textContent = percent(state.metrics.middleClassHousingBurden, 1);
-      els.wealthyAssetEffectValue.textContent = signedPercent(state.metrics.wealthyAssetEffect);
-      setSentimentPill(els.socialStressIndexValue, riskLabel(state.metrics.socialStressIndex), true);
-      els.mainPressureClassValue.textContent = state.metrics.mainPressureClass || "없음";
-      setSentimentPill(els.lowIncomeStressValue, riskLabel(state.metrics.lowIncomeStress), true);
-      setSentimentPill(els.middleMortgageStressValue, riskLabel(state.metrics.middleClassMortgageStress), true);
-      setSentimentPill(els.wealthyAssetStressValue, riskLabel(state.metrics.wealthyAssetStress), true);
-      setSentimentPill(els.hiddenVulnerabilityValue, state.metrics.vulnerabilityLabel || riskLabel(state.metrics.hiddenVulnerabilityIndex), true);
-      els.dominantVulnerabilityValue.textContent = state.metrics.dominantVulnerability || "없음";
-      setSentimentPill(els.householdVulnerabilityValue, riskLabel(state.metrics.householdVulnerability), true);
-      setSentimentPill(els.firmVulnerabilityValue, riskLabel(state.metrics.firmVulnerability), true);
-      setSentimentPill(els.bankVulnerabilityValue, riskLabel(state.metrics.bankVulnerability), true);
-      setSentimentPill(els.housingVulnerabilityValue, riskLabel(state.metrics.housingVulnerability), true);
-      setSentimentPill(els.externalVulnerabilityValue, riskLabel(state.metrics.externalVulnerability), true);
-      setSentimentPill(els.marketSuccessValue, state.metrics.marketSuccessScore > 0.68 ? "강함" : state.metrics.marketSuccessScore > 0.52 ? "보통" : "약함");
-      setSentimentPill(els.marketFailureValue, riskLabel(state.metrics.marketFailureRisk), true);
-      setSentimentPill(els.allocationQualityValue, sentimentLabel(state.metrics.allocationQuality));
-      els.marketFailureTypeValue.textContent = state.metrics.marketFailureType || "없음";
-      els.marketSuccessTypeValue.textContent = state.metrics.marketSuccessType || "형성 중";
-      if (els.historicalScenarioStatusValue) {
-        els.historicalScenarioStatusValue.textContent = historicalScenarioStatusLabel();
-      }
-      updateModelReliabilityPanel();
-      setSentimentPill(els.manufacturingStressValue, riskLabel(sectorStressValue("manufacturing")), true);
-      setSentimentPill(els.servicesDemandValue, sectorDemandLabel("services"));
-      setSentimentPill(els.constructionStressValue, riskLabel(sectorStressValue("construction")), true);
-      setSentimentPill(els.financialSectorStressValue, riskLabel(sectorStressValue("financial")), true);
-      setSentimentPill(els.technologyValuationPressureValue, valuationPressureLabel(clamp(sectorStressValue("technology") + state.metrics.stockValuationPressure * 0.35, 0, 1)), true);
-      setSentimentPill(els.agricultureStressValue, riskLabel(sectorStressValue("agriculture")), true);
-      setSentimentPill(els.energySectorStressValue, riskLabel(sectorStressValue("energy")), true);
-      els.mostStressedSectorValue.textContent = state.metrics.mostStressedSector || "없음";
-      els.sectorCountSummaryValue.textContent = sectorCountSummaryLabel();
-      els.sectorProfitInvestmentValue.textContent = `${macroMoney(state.metrics.sectorTotalProfit)} / ${macroMoney(state.metrics.sectorTotalInvestment)}`;
-      els.buybackShareValue.textContent = macroMoney(state.metrics.buybackDividendSpending);
-      els.investmentConversionValue.textContent = percent(state.metrics.investmentConversionRate * 100, 1);
-      els.cashDebtAllocationValue.textContent = `${macroMoney(state.metrics.retainedEarningsAllocation)} / ${macroMoney(state.metrics.debtRepaymentAllocation)}`;
-      els.exchangeRateIndexValue.textContent = round(state.metrics.exchangeRateIndex, 1).toFixed(1);
-      els.importPriceIndexValue.textContent = round(state.metrics.importPriceIndex, 1).toFixed(1);
-      els.commodityPriceIndexValue.textContent = round(state.metrics.commodityPriceIndex, 1).toFixed(1);
-      els.energyPriceIndexValue.textContent = round(state.metrics.energyPriceIndex, 1).toFixed(1);
-      els.tradeBalanceValue.textContent = macroMoney(state.metrics.tradeBalance);
-      els.foreignConsumerDemandValue.textContent = round(state.metrics.foreignConsumerDemand, 1).toFixed(1);
-      setSentimentPill(els.foreignInvestorSentimentValue, sentimentLabel(state.metrics.foreignInvestorSentiment));
-      setSentimentPill(els.foreignBondDemandValue, sentimentLabel(state.metrics.foreignBondDemand));
-      setSentimentPill(els.foreignSupplierPressureValue, riskLabel(state.metrics.foreignSupplierPressure), true);
-      els.foreignCapitalFlowValue.textContent = macroMoney(state.metrics.foreignCapitalFlow);
-      setSentimentPill(els.centralBankCredibilityValue, sentimentLabel(state.metrics.centralBankCredibility));
-      els.expectedRatePathValue.textContent = state.metrics.ratePathLabel || "중립";
-      setSentimentPill(els.forwardGuidanceClarityValue, sentimentLabel(state.metrics.forwardGuidanceClarity));
-      setSentimentPill(els.inflationTargetCredibilityValue, sentimentLabel(state.metrics.inflationTargetCredibility));
-      els.policyRateDetailValue.textContent = percent(state.metrics.interestRatePercent, 2);
-      els.shortTermRateValue.textContent = percent(state.metrics.shortTermRate, 2);
-      els.treasuryBill3MValue.textContent = percent(state.metrics.treasuryBill3M, 2);
-      els.bondYield2YValue.textContent = percent(state.metrics.bondYield2Y, 2);
-      els.bondYield5YValue.textContent = percent(state.metrics.bondYield5Y, 2);
-      els.bondYield10YValue.textContent = percent(state.metrics.bondYield10Y, 2);
-      els.bondYield30YValue.textContent = percent(state.metrics.bondYield30Y, 2);
-      els.loanRateDetailValue.textContent = percent(state.metrics.loanRate, 2);
-      els.mortgageRateDetailValue.textContent = percent(state.metrics.mortgageRate, 2);
-      els.corporateLoanRateValue.textContent = percent(state.metrics.corporateLoanRate, 2);
-      els.depositRateDetailValue.textContent = percent(state.metrics.depositRate, 2);
-      els.realPolicyRateValue.textContent = signedPercent(state.metrics.realPolicyRate);
-      els.termSpreadValue.textContent = `${round(state.metrics.termSpread, 2).toFixed(2)}%p`;
-      els.longBondPriceIndexValue.textContent = round(state.metrics.longBondPriceIndex, 1).toFixed(1);
-      setSentimentPill(els.bondMarketStressValue, riskLabel(state.metrics.bondMarketStress), true);
-      setSentimentPill(els.rateUncertaintyValue, state.metrics.rateUncertainty < 0.25 ? "낮음" : state.metrics.rateUncertainty < 0.50 ? "주의" : state.metrics.rateUncertainty < 0.75 ? "높음" : "위험", true);
-      els.averageCreditRatingValue.textContent = creditRatingLabelFromScore(state.metrics.averageCreditRatingScore);
-      els.distressedFirmRatioValue.textContent = percent(state.metrics.distressedFirmRatio, 1);
-      els.zombieFirmRatioValue.textContent = percent(state.metrics.zombieFirmRatio, 1);
-      els.averageDefaultRiskValue.textContent = percent(state.metrics.averageDefaultRisk, 1);
-      els.stockIndexValue.textContent = formatIndexPoint(state.metrics.stockIndexPoints);
-      els.housingIndexValue.textContent = round(state.metrics.residentialIndex || state.metrics.housingIndex, 1).toFixed(1);
-      els.commercialIndexValue.textContent = round(state.metrics.commercialIndex, 1).toFixed(1);
-      els.stockReturnValue.textContent = formatStockReturn(state.metrics.stockMonthlyReturn / 100);
-      els.stockVolatilityValue.textContent = state.metrics.stockVolatilityLabel || stockVolatilityLabel((state.metrics.stockVolatility || 0) / 100);
-      els.stockValuationPressureValue.textContent = state.metrics.stockValuationPressureLabel || valuationPressureLabel(state.metrics.stockValuationPressure);
-      els.stockMispricingValue.textContent = signedPercent(state.metrics.stockMispricing);
-      els.housingMispricingValue.textContent = signedPercent(state.metrics.housingMispricing);
-      els.speculativeDemandValue.textContent = behavioralLabel(state.metrics.speculativeDemandPressure);
-      els.stockRiskSentimentValue.textContent = state.metrics.stockRiskSentimentLabel || stockRiskSentimentLabel(state.metrics.stockRiskSentiment);
-      els.housingReturnValue.textContent = signedPercent(state.metrics.residentialReturn || state.metrics.housingReturn);
-      els.wealthEffectValue.textContent = signedPercent(state.metrics.wealthEffect);
-      els.housingAffordabilityValue.textContent = round(state.metrics.housingAffordability, 2).toFixed(2);
-      els.mortgageBurdenValue.textContent = percent(state.metrics.averageMortgageBurden, 1);
-      els.negativeEquityRatioValue.textContent = percent(state.metrics.negativeEquityRatio, 1);
-      els.assetBubbleRiskValue.textContent = state.metrics.assetBubbleRiskLabel;
-      els.landIndexValue.textContent = round(state.metrics.landIndex, 1).toFixed(1);
-      els.rentIndexValue.textContent = round(state.metrics.rentIndex, 1).toFixed(1);
-      els.commercialVacancyValue.textContent = percent(state.metrics.commercialVacancy, 1);
-      els.collateralValueIndexValue.textContent = round(state.metrics.collateralValueIndex, 1).toFixed(1);
-      els.realEstateStressValue.textContent = realEstateStressLabel(state.metrics.realEstateStress);
-      els.averageFirmStockPriceValue.textContent = money(state.metrics.averageFirmStockPrice, 1);
-      els.firmStockRangeValue.textContent = `${money(state.metrics.highestFirmStockPrice, 1)} / ${money(state.metrics.lowestFirmStockPrice, 1)}`;
-      els.firmStockVolatilityValue.textContent = percent(state.metrics.firmStockVolatility, 1);
-      els.opaqueFirmRatioValue.textContent = percent(state.metrics.opaqueFirmRatio, 1);
-      els.stockCrashFirmCountValue.textContent = `${Math.round(state.metrics.stockCrashFirmCount || 0)}개`;
-      els.financialConditionIndexValue.textContent = round(state.metrics.financialConditionIndex, 1).toFixed(1);
-      els.bondYieldValue.textContent = percent(state.metrics.bondYield, 2);
-      els.bondPriceIndexValue.textContent = round(state.metrics.bondPriceIndex, 1).toFixed(1);
-      els.creditSpreadValue.textContent = `${round(state.metrics.creditSpread, 2).toFixed(2)}%p`;
-      els.bankHealthValue.textContent = round(state.metrics.bankHealthIndex, 1).toFixed(1);
-      els.bankLendingStandardValue.textContent = state.metrics.bankLendingStandard || "정상";
-      els.creditSupplyValue.textContent = round(state.metrics.creditSupplyIndex, 1).toFixed(1);
-      setSentimentPill(els.depositorConfidenceValue, sentimentLabel(state.metrics.depositorConfidence));
-      setSentimentPill(els.interbankTrustValue, sentimentLabel(state.metrics.interbankTrust));
-      setSentimentPill(els.bankFundingPressureValue, riskLabel(state.metrics.bankFundingPressure), true);
-      setSentimentPill(els.creditOfficerCautionValue, riskLabel(state.metrics.creditOfficerCaution), true);
-      els.loanDemandIndexValue.textContent = round(state.metrics.loanDemandIndex, 1).toFixed(1);
-      els.creditCyclePhaseValue.textContent = state.metrics.creditCyclePhase || "정상";
-      els.depositRateValue.textContent = percent(state.metrics.depositRate, 2);
-      els.loanRateValue.textContent = percent(state.metrics.loanRate, 2);
-      els.nplRatioValue.textContent = percent(state.metrics.nonPerformingLoanRatio, 1);
-      els.goldIndexValue.textContent = round(state.metrics.goldIndex, 1).toFixed(1);
-      els.silverIndexValue.textContent = round(state.metrics.silverIndex, 1).toFixed(1);
-      els.safeHavenDemandValue.textContent = percent(state.metrics.safeHavenDemand, 1);
-      els.bankingCrisisRiskValue.textContent = state.metrics.bankingCrisisRiskLabel;
-      updateSentimentPanel();
-      updateClassAnalysisPanel();
-      updateMarketPsychologyPanel();
-      updateInformationGapPanel();
-      updateBehaviorPanel();
-      renderEarlyWarningPanel();
-      renderCausalDecompositionPanel();
-      updateTransmissionMap();
-      updatePolicyImpactPanel();
-      safeUpdateBalanceDiagnostics();
-      explainMacroState();
-      renderSelectedAgent();
-      renderEventLog();
+      return updateInspectorPanel(createInspectorContext());
+    }
+
+    function createInspectorContext() {
+      return {
+        els,
+        state,
+        macroMoney,
+        money,
+        percent,
+        round,
+        signedPercent,
+        taxCompositionLabel,
+        setSentimentPill,
+        capacityLabel,
+        riskLabel,
+        sentimentLabel,
+        sectorStressValue,
+        sectorDemandLabel,
+        valuationPressureLabel,
+        clamp,
+        sectorCountSummaryLabel,
+        creditRatingLabelFromScore,
+        formatIndexPoint,
+        formatStockReturn,
+        stockVolatilityLabel,
+        stockRiskSentimentLabel,
+        realEstateStressLabel,
+        behavioralLabel,
+        updateModelReliabilityPanel,
+        historicalScenarioStatusLabel,
+        updateSentimentPanel,
+        updateClassAnalysisPanel,
+        updateMarketPsychologyPanel,
+        updateInformationGapPanel,
+        updateBehaviorPanel,
+        renderEarlyWarningPanel,
+        renderCausalDecompositionPanel,
+        updateTransmissionMap,
+        updatePolicyImpactPanel,
+        safeUpdateBalanceDiagnostics,
+        explainMacroState,
+        renderSelectedAgent,
+        renderEventLog
+      };
     }
 
     function updateSentimentPanel() {
