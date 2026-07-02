@@ -1,36 +1,38 @@
 import { cloneModelParameters, defaultModelParameters } from "./modelParameters.js";
 import { createFlowLedger } from "./flowLedger.js";
 import { createSectorState } from "./sectorState.js";
+import { average } from "./mathUtils.js";
+import {
+  createInitialAssetMarket,
+  createInitialBehavioralState,
+  createInitialClassAnalysis,
+  createInitialCreditCycle,
+  createInitialExternalActors,
+  createInitialExternalSector,
+  createInitialFinancialMarket,
+  createInitialHistoricalScenario,
+  createInitialInformationSystem,
+  createInitialMacroFinancialTransmission,
+  createInitialModelReliability,
+  createInitialPerceivedEconomy,
+  createInitialPolicyCredibility,
+  createInitialRateStructure,
+  createInitialRealEstateMarket,
+  createInitialScale,
+  createInitialSentimentState,
+  createInitialVulnerabilityState
+} from "./domainStateFactory.js";
+import { createInitialCausalDecomposition } from "../analysis/causalDecomposition.js";
+import { createInitialEarlyWarning } from "../analysis/earlyWarning.js";
+import { createInitialMarketOutcome } from "../analysis/marketOutcome.js";
 
 export function resetSimulationState(context) {
   const {
     state,
-    average,
     readConfigFromControls,
     createConsumers,
     createProducers,
-    createInitialAssetMarket,
-    createInitialRealEstateMarket,
-    createInitialFinancialMarket,
-    createInitialCreditCycle,
-    createInitialMacroFinancialTransmission,
-    createInitialClassAnalysis,
-    createInitialVulnerabilityState,
-    createInitialSentimentState,
-    createInitialInformationSystem,
-    createInitialBehavioralState,
-    createInitialExternalSector,
-    createInitialExternalActors,
-    createInitialMarketOutcome,
-    createInitialCausalDecomposition,
-    createInitialEarlyWarning,
-    createInitialHistoricalScenario,
-    createInitialPolicyCredibility,
-    createInitialPerceivedEconomy,
-    createInitialModelReliability,
-    createInitialScale,
     initializePolicyState,
-    createInitialRateStructure,
     createEmptyMetrics,
     resetGameStateForCurrentMode,
     assignInitialEmployment,

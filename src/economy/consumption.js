@@ -7,21 +7,21 @@ import {
   TICKS_PER_MONTH
 } from "../core/config.js";
 import { average, clamp, rand, safeNumber, shuffle, smoothValue, sum } from "../core/mathUtils.js";
+import {
+  createInitialBehavioralState,
+  createInitialCreditCycle,
+  createInitialFinancialMarket,
+  createInitialInformationSystem,
+  createInitialMacroFinancialTransmission,
+  createInitialPerceivedEconomy,
+  createInitialRateStructure
+} from "../core/domainStateFactory.js";
 
 export function executeConsumerPurchases(context) {
   const {
     state,
     calculateUnemploymentRate,
     computeConsumptionResponseSignal,
-    createInitialBehavioralState,
-    createInitialCreditCycle,
-    createInitialExternalActors,
-    createInitialExternalSector,
-    createInitialFinancialMarket,
-    createInitialInformationSystem,
-    createInitialMacroFinancialTransmission,
-    createInitialPerceivedEconomy,
-    createInitialRateStructure,
     effectiveBaseWage,
     getRecentUnemploymentTrend,
     recordFlow
@@ -190,21 +190,7 @@ export function executeConsumerPurchases(context) {
 
 export function chooseProducerForConsumer(context, consumer, averagePrice) {
   const {
-    state,
-    calculateUnemploymentRate,
-    computeConsumptionResponseSignal,
-    createInitialBehavioralState,
-    createInitialCreditCycle,
-    createInitialExternalActors,
-    createInitialExternalSector,
-    createInitialFinancialMarket,
-    createInitialInformationSystem,
-    createInitialMacroFinancialTransmission,
-    createInitialPerceivedEconomy,
-    createInitialRateStructure,
-    effectiveBaseWage,
-    getRecentUnemploymentTrend,
-    recordFlow
+    state
   } = context;
 
   const available = state.producers.filter((producer) => producer.inventory > 0.2);

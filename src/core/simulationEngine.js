@@ -8,10 +8,11 @@ export function stepSimulationEngine(context) {
         return true;
       } catch (error) {
         context.state.running = false;
-        context.callbacks.repairSimulationState();
-        context.callbacks.safeUpdateAllDisplays();
-        context.callbacks.updateRunState();
-        context.callbacks.recordRuntimeError(error, "시뮬레이션 오류", "오류가 감지되어 일시정지했습니다.");
+        const callbacks = getEngineCallbacks(context);
+        callbacks.repairSimulationState();
+        callbacks.safeUpdateAllDisplays();
+        callbacks.updateRunState();
+        callbacks.recordRuntimeError(error, "시뮬레이션 오류", "오류가 감지되어 일시정지했습니다.");
         return false;
       }
     }
@@ -21,16 +22,18 @@ export function safeStepSimulationEngine(context) {
         return stepSimulationEngine(context);
       } catch (error) {
         context.state.running = false;
-        context.callbacks.repairSimulationState();
-        context.callbacks.safeUpdateAllDisplays();
-        context.callbacks.updateRunState();
-        context.callbacks.recordRuntimeError(error, "시뮬레이션 오류", "오류가 감지되어 일시정지했습니다.");
+        const callbacks = getEngineCallbacks(context);
+        callbacks.repairSimulationState();
+        callbacks.safeUpdateAllDisplays();
+        callbacks.updateRunState();
+        callbacks.recordRuntimeError(error, "시뮬레이션 오류", "오류가 감지되어 일시정지했습니다.");
         return false;
       }
     }
 
 export function runSimulationStepEngine(context) {
-      const { state, callbacks, performanceNow } = context;
+      const { state, performanceNow } = context;
+      const callbacks = getEngineCallbacks(context);
       if (!shouldRunSimulationStep(state)) return;
       if (state.game.activeEvent) return;
       callbacks.syncLivePolicy();
@@ -156,3 +159,20 @@ export function resetTickAccountingEngine(context) {
         producer.unitsSoldTick = 0;
       });
     }
+
+function getEngineCallbacks(context) {
+  if (context.callbacks) return context.callbacks;
+  const services = context.services || {};
+  return {
+    ...(services.policy || {}),
+    ...(services.rates || {}),
+    ...(services.expectations || {}),
+    ...(services.finance || {}),
+    ...(services.realEconomy || {}),
+    ...(services.assets || {}),
+    ...(services.diagnostics || {}),
+    ...(services.history || {}),
+    ...(services.ui || {}),
+    ...(services.safety || {})
+  };
+}

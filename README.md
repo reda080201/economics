@@ -50,6 +50,9 @@ src/
   core/
     config.js              # 공통 상수와 정책 전달 메타데이터
     stateFactory.js        # 초기 앱 상태 생성
+    domainStateFactory.js  # 자산, 금융, 심리, 대외, 계층 등 domain 초기 상태 생성
+    resetSimulation.js     # 시뮬레이션 상태 재초기화 orchestration
+    simulationEngine.js    # tick 실행 순서와 안전 wrapper
     mathUtils.js           # 안전 수치, clamp, 평균, Gini 등 공통 유틸
     formatUtils.js         # 라벨, 등급, 상태 표시용 순수 helper
     calibration.js         # 공식/샘플 보완 데이터 기반 파라미터 보정과 변수별 loss 진단
@@ -63,7 +66,19 @@ src/
     accountingAdapter.js   # SFC 보조 회계 레이어 연결
     laborMarket.js         # 고용, 해고, 임금 지급 노동시장 엔진
     production.js          # 생산량, 가격 조정, 기대수요 엔진
+    consumption.js         # 계층별 소비, 세금 체감, 신용/심리 기반 구매 엔진
+    government.js          # 정부지출, 이윤세, 세후 현금흐름 배분 엔진
+    externalTrade.js       # 대외수요, 환율, 수입물가, 외국 주체 전송 경로
+    macroMetrics.js        # GDP, 물가, 실업률, 재정, 분배 지표 집계
     responseFunctions.js   # 단순화된 거시 반응식
+  finance/
+    interestRates.js       # 금리 구조, 국채시장, 실질금리 전송 경로
+    banking.js             # 은행 건전성, 신용공급, 스프레드, 은행심리
+    creditCycle.js         # 신용 과다/경색 국면과 잔류 이벤트
+    safeAssets.js          # 안전자산 선호와 금/은 시장 보조 계산
+  models/
+    economicModels.js      # 모델 분석실 순수 계산 함수
+    modelDefinitions.js    # 모델 분석실 입력 정의
   data/                    # 로컬 데이터 adapter와 변환 함수
   liquidity/               # FRED 유동성 series, 점수, regime 분류
   scenarios/               # 시나리오 선택 데이터
@@ -76,7 +91,7 @@ data/
   sample_us_macro.json
 ```
 
-현재 `src/main.js`에는 소비·정부·금융·자산시장 엔진 로직이 아직 일부 남아 있습니다. 순수 helper, 분석 레이어, 노동시장 엔진, 생산 엔진은 분리를 시작했으며, 나머지 엔진 분리는 기능 보존을 우선해 단계적으로 진행 중입니다.
+현재 아키텍처는 기존 거대 `src/main.js`에서 reset, tick 실행 순서, 소비, 정부, 대외무역, 거시지표, 금리, 은행, 신용, 안전자산, inspector UI를 분리하는 중간 단계입니다. 기능 보존을 우선해 일부 모듈은 아직 callback/context 기반으로 연결되어 있으며, 다음 리팩터링 목표는 더 많은 파일 분할보다 context 의존성 축소와 UI bootstrap 분리입니다.
 
 ## 백테스트와 데이터 보정
 
@@ -152,7 +167,9 @@ http://127.0.0.1:8789/api/fred
 
 ## 향후 계획
 
-- `src/main.js`의 소비, 정부, 금융, 자산시장 로직을 `economy/`/`finance/` 모듈로 추가 분리
+- `src/main.js`의 남은 context/callback 의존성을 줄이고 `initApp()` 중심 조립 파일로 축소
+- `cacheElements()`와 `setupEvents()`를 `ui/domCache.js`, `ui/bootstrap.js`로 분리
+- 자산시장, 게임 runtime, 차트/canvas 렌더링 잔여 로직을 독립 모듈로 추가 이동
 - FRED adapter 안정화 및 backend proxy 배포/보안 옵션 보강
 - ECOS 실제 통계코드 매핑과 한국 공식 데이터 live 연동 확대
 - OECD SDMX adapter stub을 실제 국가 비교용 live adapter로 확장

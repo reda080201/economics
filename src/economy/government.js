@@ -12,18 +12,7 @@ export function executeGovernmentSpending(context) {
   const {
     state,
     calculateUnemploymentRate,
-    computeConsumptionResponseSignal,
-    createInitialBehavioralState,
-    createInitialCreditCycle,
-    createInitialExternalActors,
-    createInitialExternalSector,
-    createInitialFinancialMarket,
-    createInitialInformationSystem,
-    createInitialMacroFinancialTransmission,
-    createInitialPerceivedEconomy,
-    createInitialRateStructure,
     effectiveBaseWage,
-    getRecentUnemploymentTrend,
     recordFlow
   } = context;
 
@@ -120,21 +109,7 @@ export function executeGovernmentSpending(context) {
 
 export function getDebtSpendingBrake(context) {
   const {
-    state,
-    calculateUnemploymentRate,
-    computeConsumptionResponseSignal,
-    createInitialBehavioralState,
-    createInitialCreditCycle,
-    createInitialExternalActors,
-    createInitialExternalSector,
-    createInitialFinancialMarket,
-    createInitialInformationSystem,
-    createInitialMacroFinancialTransmission,
-    createInitialPerceivedEconomy,
-    createInitialRateStructure,
-    effectiveBaseWage,
-    getRecentUnemploymentTrend,
-    recordFlow
+    state
   } = context;
 
   const debtToGdp = safeNumber(state.government.debtToGdpRatio, state.metrics.debtToGdpRatio || 0);
@@ -147,19 +122,6 @@ export function getDebtSpendingBrake(context) {
 export function collectProfitTaxes(context) {
   const {
     state,
-    calculateUnemploymentRate,
-    computeConsumptionResponseSignal,
-    createInitialBehavioralState,
-    createInitialCreditCycle,
-    createInitialExternalActors,
-    createInitialExternalSector,
-    createInitialFinancialMarket,
-    createInitialInformationSystem,
-    createInitialMacroFinancialTransmission,
-    createInitialPerceivedEconomy,
-    createInitialRateStructure,
-    effectiveBaseWage,
-    getRecentUnemploymentTrend,
     recordFlow
   } = context;
 
@@ -196,21 +158,7 @@ export function collectProfitTaxes(context) {
 
 export function allocateAfterTaxCashFlow(context, producer, afterTaxProfit) {
   const {
-    state,
-    calculateUnemploymentRate,
-    computeConsumptionResponseSignal,
-    createInitialBehavioralState,
-    createInitialCreditCycle,
-    createInitialExternalActors,
-    createInitialExternalSector,
-    createInitialFinancialMarket,
-    createInitialInformationSystem,
-    createInitialMacroFinancialTransmission,
-    createInitialPerceivedEconomy,
-    createInitialRateStructure,
-    effectiveBaseWage,
-    getRecentUnemploymentTrend,
-    recordFlow
+    state
   } = context;
 
   if (!producer || afterTaxProfit <= 0) {
