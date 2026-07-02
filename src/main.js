@@ -83,6 +83,7 @@ import {
   safeStepSimulationEngine,
   stepSimulationEngine
 } from "./core/simulationEngine.js";
+import { createSimulationServices } from "./core/serviceRegistry.js";
 import { calibrateParameters } from "./core/calibration.js";
 import { runBacktest } from "./core/backtest.js";
 import { runMonteCarloScenario } from "./core/monteCarlo.js";
@@ -172,6 +173,8 @@ import {
 } from "./finance/safeAssets.js";
 import { scenarioSelectGroups } from "./scenarios/presets.js";
 import { hydrateScenarioSelect } from "./ui/controls.js";
+import { cacheElements as cacheDomElements } from "./ui/domCache.js";
+import { setupEvents as setupUiEvents } from "./ui/events.js";
 import {
   clearDataApiKeys as clearDataApiKeysPanel,
   runLiveDataLoadMode as runLiveDataLoadModePanel,
@@ -217,309 +220,55 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
     });
 
     function cacheElements() {
-      cacheControlElements();
-      cacheKpiElements();
-      cacheChartElements();
-      cacheInspectorElements();
-      cacheDataLabElements();
-      cacheModelLabElements();
-      cacheOverlayElements();
-    }
-
-    function cacheElementIds(ids) {
-      ids.forEach((id) => {
-        els[id] = document.getElementById(id);
-      });
-    }
-
-    function cacheControlElements() {
-      cacheElementIds([
-        "runPulse", "runState", "tickDisplay", "startBtn", "pauseBtn", "resetBtn", "stepBtn", "shockBtn",
-        "modeStatusValue", "gameModeSelect", "startGameModeBtn", "speedValue", "speedSlider",
-        "performanceModeSelect", "consumerValue", "consumerSlider", "producerValue", "producerSlider",
-        "interestValue", "interestSlider", "taxValue", "taxSlider", "corporateTaxValue",
-        "corporateTaxSlider", "vatValue", "vatSlider", "spendingValue", "spendingSlider",
-        "wageValue", "wageSlider", "inflationSensitivityValue", "inflationSlider", "scenarioSelect",
-        "applyScenarioBtn", "historicalScenarioBtn", "autoPolicyToggle", "randomPolicyEventsToggle"
-      ]);
-    }
-
-    function cacheKpiElements() {
-      cacheElementIds([
-        "calendarValue", "phaseValue", "scoreValue", "bestScoreValue", "feedbackBanners",
-        "macroFocusLineValue",
-        "gdpValue", "outputValue", "consumptionValue", "investmentValue", "unemploymentValue",
-        "employmentValue", "priceValue", "inflationValue", "rateValue", "balanceValue",
-        "debtValue", "householdCashValue", "confidenceValue", "firmCashValue", "inventoryValue",
-        "shockBadge", "consumptionDeltaValue", "investmentDeltaValue", "unemploymentDeltaValue",
-        "priceDeltaValue"
-      ]);
-    }
-
-    function cacheChartElements() {
-      cacheElementIds([
-        "simCanvas", "canvasTooltip", "gdpChart", "priceChart", "unemploymentChart", "demandChart",
-        "governmentChart", "assetChart", "firmStockChart", "financialChart", "safeAssetChart",
-        "sentimentChart", "modelChart"
-      ]);
-    }
-
-    function cacheInspectorElements() {
-      cacheElementIds([
-        "macroNarrative", "transmissionMapValue", "policyRecommendationValue", "earlyWarningSummaryValue",
-        "causalDecompositionValue", "missionSummary", "objectiveList", "policyEventCard",
-        "policyEventTitle", "policyEventDescription", "policyEventOptions", "selectedAgent",
-        "sentConsumerConfidenceValue", "sentBusinessConfidenceValue", "sentBankRiskAppetiteValue",
-        "sentMarketRiskValue", "sentInflationExpectationValue", "sentRecessionFearValue",
-        "sentFiscalCredibilityValue", "sentimentNarrativeValue", "classAnalysisPanelValue",
-        "stockFearIndexValue", "fearGreedValue", "rumorIntensityValue", "informationUncertaintyValue",
-        "safeHavenPsychologyValue", "stockExpectationValue", "stockVolatilityIndexValue",
-        "householdInfoAccuracyValue", "firmDemandPerceptionValue", "bankRiskPerceptionValue",
-        "marketOverreactionValue", "policyClarityValue", "misperceptionIndexValue",
-        "informationNarrativeValue", "realEstateBeliefValue", "stockBeliefValue", "herdIntensityValue",
-        "fomoIntensityValue", "lossAversionValue", "confirmationBiasValue", "panicSellingValue",
-        "behaviorMispricingValue", "behaviorNarrativeValue", "diagBalanceSummaryValue",
-        "diagAvgUnemploymentValue", "diagAvgInflationValue", "diagAvgGdpValue", "diagPotentialOutputValue",
-        "diagOutputGapValue", "diagCapacityUtilizationValue", "diagUnemploymentGapValue",
-        "diagInflationGapValue", "diagPolicyGapValue", "diagAvgFirmEmploymentValue",
-        "diagHiringFreezeRatioValue", "diagFirmStressRatioValue", "diagInventoryDemandRatioValue",
-        "diagInterestPolicyValue", "diagTaxPolicyValue", "diagCorporateTaxPolicyValue",
-        "diagSpendingPolicyValue", "diagDebtToGdpValue", "diagGovernmentDebtServiceValue",
-        "diagFiscalSpaceValue", "diagHouseholdDebtBurdenValue", "diagFirmDscrValue",
-        "diagHouseholdDebtStressRatioValue", "diagFirmDebtStressRatioValue", "diagAssetBubbleRiskValue",
-        "diagHousingAffordabilityValue", "diagWealthEffectValue", "diagFinancialMarketSummaryValue",
-        "diagBondYieldValue", "diagCreditSpreadValue", "diagBankingCrisisRiskValue", "diagWarningsValue",
-        "taxCollectedValue", "householdIncomeTaxValue", "corporateTaxCollectedValue", "vatRevenueValue",
-        "taxCompositionValue", "taxSentimentValue", "spendingActualValue", "governmentDebtServiceValue",
-        "debtToGdpValue", "fiscalSpaceValue", "wagesValue", "unitsSoldValue", "unitsProducedValue",
-        "giniValue", "householdDebtValue", "debtBurdenValue", "mortgageBurdenValue",
-        "negativeEquityRatioValue", "incomeInequalityValue", "wealthInequalityValue",
-        "lowIncomeConsumptionCapacityValue", "middleClassHousingBurdenValue", "wealthyAssetEffectValue",
-        "socialStressIndexValue", "mainPressureClassValue", "lowIncomeStressValue",
-        "middleMortgageStressValue", "wealthyAssetStressValue", "hiddenVulnerabilityValue",
-        "dominantVulnerabilityValue", "householdVulnerabilityValue", "firmVulnerabilityValue",
-        "bankVulnerabilityValue", "housingVulnerabilityValue", "externalVulnerabilityValue",
-        "marketSuccessValue", "marketFailureValue", "allocationQualityValue", "marketFailureTypeValue",
-        "marketSuccessTypeValue", "historicalScenarioStatusValue", "earlyWarningDetailValue",
-        "firmDebtValue", "firmDscrValue", "buybackShareValue", "investmentConversionValue",
-        "cashDebtAllocationValue", "manufacturingStressValue", "servicesDemandValue",
-        "agricultureStressValue", "energySectorStressValue", "constructionStressValue",
-        "financialSectorStressValue", "technologyValuationPressureValue", "mostStressedSectorValue",
-        "sectorCountSummaryValue", "sectorProfitInvestmentValue", "exchangeRateIndexValue",
-        "importPriceIndexValue", "commodityPriceIndexValue", "energyPriceIndexValue",
-        "tradeBalanceValue", "foreignConsumerDemandValue", "foreignInvestorSentimentValue",
-        "foreignBondDemandValue", "foreignSupplierPressureValue", "foreignCapitalFlowValue",
-        "centralBankCredibilityValue", "expectedRatePathValue", "forwardGuidanceClarityValue",
-        "inflationTargetCredibilityValue", "policyRateDetailValue", "shortTermRateValue",
-        "treasuryBill3MValue", "bondYield2YValue", "bondYield5YValue", "bondYield10YValue",
-        "bondYield30YValue", "loanRateDetailValue", "mortgageRateDetailValue",
-        "corporateLoanRateValue", "depositRateDetailValue", "realPolicyRateValue",
-        "termSpreadValue", "longBondPriceIndexValue", "bondMarketStressValue", "rateUncertaintyValue",
-        "averageCreditRatingValue", "distressedFirmRatioValue", "zombieFirmRatioValue",
-        "averageDefaultRiskValue", "stockIndexValue", "housingIndexValue", "commercialIndexValue",
-        "stockReturnValue", "stockVolatilityValue", "stockValuationPressureValue", "stockMispricingValue",
-        "housingMispricingValue", "speculativeDemandValue", "stockRiskSentimentValue",
-        "housingReturnValue", "wealthEffectValue", "housingAffordabilityValue", "assetBubbleRiskValue",
-        "landIndexValue", "rentIndexValue", "commercialVacancyValue", "collateralValueIndexValue",
-        "realEstateStressValue", "averageFirmStockPriceValue", "firmStockRangeValue",
-        "firmStockVolatilityValue", "opaqueFirmRatioValue", "stockCrashFirmCountValue",
-        "financialConditionIndexValue", "bondYieldValue", "bondPriceIndexValue", "creditSpreadValue",
-        "bankHealthValue", "bankLendingStandardValue", "creditSupplyValue", "depositorConfidenceValue",
-        "interbankTrustValue", "bankFundingPressureValue", "creditOfficerCautionValue",
-        "loanDemandIndexValue", "creditCyclePhaseValue", "depositRateValue", "loanRateValue",
-        "nplRatioValue", "goldIndexValue", "silverIndexValue", "safeHavenDemandValue",
-        "bankingCrisisRiskValue"
-      ]);
-    }
-
-    function cacheDataLabElements() {
-      cacheElementIds([
-        "balanceQuickTestBtn", "scenarioValidationBtn", "policyComparisonHorizon", "policyComparisonBtn",
-        "policyComparisonSummaryValue", "policyComparisonResult", "calibrationCountrySelect",
-        "dataSourceSelect", "dataStartDateInput", "dataEndDateInput", "fredApiKeyInput",
-        "ecosApiKeyInput", "fredProxyUrlInput", "saveApiKeyBtn", "clearApiKeyBtn", "loadLiveDataBtn", "dataSourceStatusValue",
-        "calibrationBtn", "backtestBtn", "monteCarloBtn", "accountingValidationValue",
-        "modelConfidenceValue", "dataLabResult", "balanceTestResult", "scenarioValidationResult",
-        "liquidityRadarBtn", "liquidityRadarStatusValue", "liquidityScoreValue", "liquidityRegimeValue",
-        "fedNetLiquidityValue", "liquiditySubScoreValue", "liquiditySeriesTableValue", "liquidityRadarResult",
-        "developerValidationBtn", "developerValidationResult", "debugErrorLog", "eventLog"
-      ]);
-    }
-
-    function cacheModelLabElements() {
-      cacheElementIds([
-        "modelSelector", "useCurrentEconomyBtn", "runModelBtn", "modelInputs", "modelResultSummary",
-        "modelInterpretation", "modelComparisonList"
-      ]);
-    }
-
-    function cacheOverlayElements() {
-      cacheElementIds([
-        "toastStack", "endOverlay", "endTitle", "endReason", "endSummaryGrid", "endRestartBtn",
-        "endSandboxBtn"
-      ]);
+      cacheDomElements(els, document);
     }
 
     function setupEvents() {
-      safeOn(els.startBtn, "click", () => {
-        if (state.game.activeEvent) {
-          showToast("정책 선택 이벤트 대기 중", "선택지를 고른 뒤 시뮬레이션을 계속할 수 있습니다.");
-          return;
+      setupUiEvents({
+        els,
+        safeOn,
+        documentRef: document,
+        windowRef: window,
+        handlers: {
+          state,
+          showToast,
+          updateRunState,
+          resetSimulation,
+          safeStepSimulation,
+          triggerRandomShock,
+          safeUpdateAllDisplays,
+          safeUpdateCharts,
+          initializeGameMode,
+          getGameModeConfig,
+          syncLivePolicy,
+          updateControlLabels,
+          handlePolicyChange,
+          applyScenario,
+          startHistoricalScenarioTimeline,
+          pushEvent,
+          activateControlTab,
+          handleControlPanelAction,
+          safeRenderSimulation,
+          handleCanvasClick,
+          handleCanvasHover,
+          hideCanvasTooltip,
+          renderModelInputs,
+          runSelectedEconomicModel,
+          loadCurrentEconomyIntoModel,
+          runBalanceQuickTest,
+          runScenarioValidation,
+          runPolicyComparison,
+          saveDataApiKeys,
+          clearDataApiKeys,
+          runLiveDataLoadMode,
+          runDataCalibrationMode,
+          runBacktestMode,
+          runMonteCarloMode,
+          runLiquidityRadarMode,
+          runDeveloperValidationMode,
+          performanceNow: () => performance.now()
         }
-        if (state.game.status !== "active" && state.game.mode !== "sandbox") {
-          showToast("분석 종료됨", "결과 화면에서 재시작하거나 기본 실험으로 돌아가세요.");
-          return;
-        }
-        state.running = true;
-        state.accumulator = 0;
-        state.debug.lastSuccessfulTickTime = performance.now();
-        updateRunState();
-      }, "startBtn");
-
-      safeOn(els.pauseBtn, "click", () => {
-        state.running = false;
-        updateRunState();
-      }, "pauseBtn");
-
-      safeOn(els.resetBtn, "click", () => {
-        state.running = false;
-        resetSimulation();
-      }, "resetBtn");
-
-      safeOn(els.stepBtn, "click", () => {
-        state.running = false;
-        updateRunState();
-        safeStepSimulation();
-      }, "stepBtn");
-
-      safeOn(els.shockBtn, "click", () => {
-        triggerRandomShock();
-        safeUpdateAllDisplays();
-        safeUpdateCharts(true);
-      }, "shockBtn");
-
-      safeOn(els.startGameModeBtn, "click", () => {
-        initializeGameMode(els.gameModeSelect.value);
-      }, "startGameModeBtn");
-
-      safeOn(els.gameModeSelect, "change", () => {
-        els.modeStatusValue.textContent = getGameModeConfig(els.gameModeSelect.value).name;
-      }, "gameModeSelect");
-
-      [
-        els.speedSlider, els.interestSlider, els.taxSlider, els.corporateTaxSlider, els.vatSlider,
-        els.spendingSlider, els.wageSlider, els.inflationSlider
-      ].forEach((input) => {
-        safeOn(input, "input", () => {
-          syncLivePolicy();
-          updateControlLabels();
-          handlePolicyChange(input);
-        }, "policy slider");
       });
-
-      [els.consumerSlider, els.producerSlider].forEach((input) => {
-        safeOn(input, "input", updateControlLabels, "agent slider");
-        safeOn(input, "change", () => {
-          state.running = false;
-          resetSimulation();
-        }, "agent slider");
-      });
-
-      safeOn(els.applyScenarioBtn, "click", () => {
-        applyScenario(els.scenarioSelect.value);
-      }, "applyScenarioBtn");
-
-      safeOn(els.historicalScenarioBtn, "click", () => {
-        startHistoricalScenarioTimeline(els.scenarioSelect.value);
-      }, "historicalScenarioBtn");
-
-      safeOn(els.autoPolicyToggle, "change", () => {
-        pushEvent(els.autoPolicyToggle.checked ? "자동 통화정책을 켰습니다." : "자동 통화정책을 껐습니다.");
-      }, "autoPolicyToggle");
-
-      safeOn(els.randomPolicyEventsToggle, "change", () => {
-        pushEvent(els.randomPolicyEventsToggle.checked ? "정책 선택 이벤트를 켰습니다." : "정책 선택 이벤트를 껐습니다.");
-      }, "randomPolicyEventsToggle");
-
-      safeOn(els.performanceModeSelect, "change", () => {
-        state.config.performanceMode = els.performanceModeSelect.value;
-        showToast("성능 모드 변경", els.performanceModeSelect.value === "light" ? "가벼움 모드로 렌더링과 차트 갱신을 줄입니다." : "보통 모드로 실행합니다.");
-      }, "performanceModeSelect");
-
-      document.querySelectorAll("[data-control-tab]").forEach((button) => {
-        safeOn(button, "click", () => activateControlTab(button.dataset.controlTab), `control tab ${button.dataset.controlTab}`);
-      });
-
-      document.querySelectorAll("[data-control-action]").forEach((button) => {
-        safeOn(button, "click", () => handleControlPanelAction(button.dataset.controlAction), `control action ${button.dataset.controlAction}`);
-      });
-
-      document.querySelectorAll(".more-charts, .model-lab").forEach((details) => {
-        details.addEventListener("toggle", () => {
-          if (details.open) {
-            safeUpdateCharts(true);
-            if (details.classList.contains("model-lab")) runSelectedEconomicModel();
-          }
-        });
-      });
-
-      [
-        els.speedSlider, els.consumerSlider, els.producerSlider, els.interestSlider, els.taxSlider, els.corporateTaxSlider, els.vatSlider,
-        els.spendingSlider, els.wageSlider, els.inflationSlider
-      ].forEach((input) => {
-        safeOn(input, "input", () => {
-          input.classList.add("slider-active");
-          window.setTimeout(() => input.classList.remove("slider-active"), 520);
-        }, "slider active indicator");
-      });
-
-      safeOn(window, "resize", () => {
-        if (state.ui) state.ui.canvasPositionCacheKey = "";
-        safeRenderSimulation(performance.now());
-      }, "window resize");
-
-      safeOn(els.simCanvas, "click", handleCanvasClick, "simCanvas");
-      safeOn(els.simCanvas, "mousemove", handleCanvasHover, "simCanvas");
-      safeOn(els.simCanvas, "mouseleave", () => {
-        state.hovered = null;
-        hideCanvasTooltip();
-        safeRenderSimulation(performance.now());
-      }, "simCanvas");
-
-      safeOn(els.endRestartBtn, "click", () => {
-        els.endOverlay.classList.remove("visible");
-        initializeGameMode(state.game.mode);
-      }, "endRestartBtn");
-
-      safeOn(els.endSandboxBtn, "click", () => {
-        els.endOverlay.classList.remove("visible");
-        els.gameModeSelect.value = "sandbox";
-        initializeGameMode("sandbox");
-      }, "endSandboxBtn");
-
-      safeOn(els.modelSelector, "change", () => {
-        renderModelInputs();
-        runSelectedEconomicModel();
-      }, "modelSelector");
-      safeOn(els.useCurrentEconomyBtn, "click", () => {
-        loadCurrentEconomyIntoModel();
-      }, "useCurrentEconomyBtn");
-      safeOn(els.runModelBtn, "click", () => {
-        runSelectedEconomicModel();
-      }, "runModelBtn");
-      safeOn(els.balanceQuickTestBtn, "click", runBalanceQuickTest, "balanceQuickTestBtn");
-      safeOn(els.scenarioValidationBtn, "click", runScenarioValidation, "scenarioValidationBtn");
-      safeOn(els.policyComparisonBtn, "click", runPolicyComparison, "policyComparisonBtn");
-      safeOn(els.saveApiKeyBtn, "click", saveDataApiKeys, "saveApiKeyBtn");
-      safeOn(els.clearApiKeyBtn, "click", clearDataApiKeys, "clearApiKeyBtn");
-      safeOn(els.loadLiveDataBtn, "click", runLiveDataLoadMode, "loadLiveDataBtn");
-      safeOn(els.calibrationBtn, "click", runDataCalibrationMode, "calibrationBtn");
-      safeOn(els.backtestBtn, "click", runBacktestMode, "backtestBtn");
-      safeOn(els.monteCarloBtn, "click", runMonteCarloMode, "monteCarloBtn");
-      safeOn(els.liquidityRadarBtn, "click", runLiquidityRadarMode, "liquidityRadarBtn");
-      safeOn(els.developerValidationBtn, "click", runDeveloperValidationMode, "developerValidationBtn");
-      renderModelInputs();
-      runSelectedEconomicModel();
     }
 
     function enhanceControlPanel() {
@@ -1135,23 +884,29 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
     function createResetSimulationContext() {
       return {
         state,
-        readConfigFromControls,
-        createConsumers,
-        createProducers,
-        initializePolicyState,
-        createEmptyMetrics,
-        resetGameStateForCurrentMode,
-        assignInitialEmployment,
-        applyGameModeStartingConditions,
-        updateMacroMetrics,
-        updateMacroFinancialTransmission,
-        updatePerceivedEconomy,
-        updateExpectationsSystem,
-        updateSentimentSystem,
-        updateBehavioralSystem,
-        updateGameSummaryStats,
-        computeScore,
-        updateObjectives,
+        io: {
+          readConfig: readConfigFromControls
+        },
+        agents: {
+          createConsumers,
+          createProducers,
+          assignInitialEmployment
+        },
+        lifecycle: {
+          initializePolicyState,
+          createEmptyMetrics,
+          resetGameStateForCurrentMode,
+          applyGameModeStartingConditions,
+          updateMacroMetrics,
+          updateMacroFinancialTransmission,
+          updatePerceivedEconomy,
+          updateExpectationsSystem,
+          updateSentimentSystem,
+          updateBehavioralSystem,
+          updateGameSummaryStats,
+          computeScore,
+          updateObjectives
+        },
         now: () => performance.now()
       };
     }
@@ -1730,84 +1485,64 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
         createEmptyMetrics,
         safeNumber,
         performanceNow: () => performance.now(),
-        services: {
-          policy: {
-            syncLivePolicy,
-            applyAutomaticPolicyIfEnabled,
-            advanceShockClock,
-            advancePolicyTransmission
-          },
-          rates: {
-            updateInterestRateStructure,
-            applyInterestEffects
-          },
-          expectations: {
-            updateMacroFinancialTransmission,
-            updatePerceivedEconomy,
-            updateExpectationsSystem,
-            updateSentimentSystem,
-            updateBehavioralSystem,
-            updateExternalSector,
-            updatePolicyCredibility,
-            updateInflationExpectations,
-            updateBusinessOutlook,
-            updateConsumerConfidence,
-            applySentimentToConsumers,
-            applySentimentToFirms
-          },
-          finance: {
-            updateFinancialMarkets,
-            computeDebtStress,
-            propagateFinancialStress
-          },
-          realEconomy: {
-            updateWagePriceSpiral,
-            updateLaborMarket,
-            payWages,
-            produceGoods,
-            executeGovernmentSpending,
-            executeConsumerPurchases,
-            executeExternalTrade,
-            executeProducerInvestment,
-            adjustProducerPricesAndExpectations,
-            collectProfitTaxes,
-            updateMacroMetrics
-          },
-          assets: {
-            updateAssetMarkets,
-            applyWealthEffects
-          },
-          diagnostics: {
-            updateFirmCreditRatings,
-            updateZombieFirms,
-            computeInequalityMetrics,
-            computeSocialStress,
-            computeMarketOutcome,
-            updateCausalDecomposition,
-            updateEarlyWarningSystem,
-            advanceHistoricalScenarioTimeline,
-            syncHistoricalScenarioMetrics,
-            updateTaxSentimentMetrics,
-            updateVulnerabilitySystem,
-            updateGameSystems
-          },
-          history: {
-            updateSfcAccountingLayer,
-            appendHistory
-          },
-          ui: {
-            shouldUpdateDomThisTick,
-            safeUpdateAllDisplays,
-            safeUpdateCharts,
-            updateRunState,
-            recordRuntimeError
-          },
-          safety: {
-            stabilizeEconomy,
-            sanitizeEconomy,
-            repairSimulationState
-          }
-        }
+        services: createSimulationServices({
+          syncLivePolicy,
+          applyAutomaticPolicyIfEnabled,
+          advanceShockClock,
+          advancePolicyTransmission,
+          updateInterestRateStructure,
+          applyInterestEffects,
+          updateMacroFinancialTransmission,
+          updatePerceivedEconomy,
+          updateExpectationsSystem,
+          updateSentimentSystem,
+          updateBehavioralSystem,
+          updateExternalSector,
+          updatePolicyCredibility,
+          updateInflationExpectations,
+          updateBusinessOutlook,
+          updateConsumerConfidence,
+          applySentimentToConsumers,
+          applySentimentToFirms,
+          updateFinancialMarkets,
+          computeDebtStress,
+          propagateFinancialStress,
+          updateWagePriceSpiral,
+          updateLaborMarket,
+          payWages,
+          produceGoods,
+          executeGovernmentSpending,
+          executeConsumerPurchases,
+          executeExternalTrade,
+          executeProducerInvestment,
+          adjustProducerPricesAndExpectations,
+          collectProfitTaxes,
+          updateMacroMetrics,
+          updateAssetMarkets,
+          applyWealthEffects,
+          updateFirmCreditRatings,
+          updateZombieFirms,
+          computeInequalityMetrics,
+          computeSocialStress,
+          computeMarketOutcome,
+          updateCausalDecomposition,
+          updateEarlyWarningSystem,
+          advanceHistoricalScenarioTimeline,
+          syncHistoricalScenarioMetrics,
+          updateTaxSentimentMetrics,
+          updateVulnerabilitySystem,
+          updateGameSystems,
+          updateSfcAccountingLayer,
+          appendHistory,
+          shouldUpdateDomThisTick,
+          safeUpdateAllDisplays,
+          safeUpdateCharts,
+          updateRunState,
+          recordRuntimeError,
+          stabilizeEconomy,
+          sanitizeEconomy,
+          repairSimulationState
+        })
       };
     }
 

@@ -53,6 +53,7 @@ src/
     domainStateFactory.js  # 자산, 금융, 심리, 대외, 계층 등 domain 초기 상태 생성
     resetSimulation.js     # 시뮬레이션 상태 재초기화 orchestration
     simulationEngine.js    # tick 실행 순서와 안전 wrapper
+    serviceRegistry.js     # tick phase별 service callback 묶음 생성
     mathUtils.js           # 안전 수치, clamp, 평균, Gini 등 공통 유틸
     formatUtils.js         # 라벨, 등급, 상태 표시용 순수 helper
     calibration.js         # 공식/샘플 보완 데이터 기반 파라미터 보정과 변수별 loss 진단
@@ -83,6 +84,8 @@ src/
   liquidity/               # FRED 유동성 series, 점수, regime 분류
   scenarios/               # 시나리오 선택 데이터
   ui/
+    domCache.js            # DOM id cache registry
+    events.js              # 이벤트 바인딩 orchestration
     controls.js            # 시나리오 select hydration
     dataLab.js             # 데이터 보정, 백테스트, 몬테카를로 UI
     liquidityRadar.js      # Liquidity Radar UI
@@ -91,7 +94,7 @@ data/
   sample_us_macro.json
 ```
 
-현재 아키텍처는 기존 거대 `src/main.js`에서 reset, tick 실행 순서, 소비, 정부, 대외무역, 거시지표, 금리, 은행, 신용, 안전자산, inspector UI를 분리하는 중간 단계입니다. 기능 보존을 우선해 일부 모듈은 아직 callback/context 기반으로 연결되어 있으며, 다음 리팩터링 목표는 더 많은 파일 분할보다 context 의존성 축소와 UI bootstrap 분리입니다.
+현재 아키텍처는 기존 거대 `src/main.js`에서 reset, tick 실행 순서, 소비, 정부, 대외무역, 거시지표, 금리, 은행, 신용, 안전자산, inspector UI, DOM cache, 이벤트 바인딩을 분리하는 중간 단계입니다. 기능 보존을 우선해 일부 모듈은 아직 callback/context 기반으로 연결되어 있으며, 최근 단계에서는 `main.js` import 축소와 phase orchestration 정리를 진행했습니다. 다음 리팩터링 목표는 service registry 내부로 wrapper를 더 이동하고 `initApp()` 중심 bootstrap으로 축소하는 것입니다.
 
 ## 백테스트와 데이터 보정
 
@@ -168,7 +171,8 @@ http://127.0.0.1:8789/api/fred
 ## 향후 계획
 
 - `src/main.js`의 남은 context/callback 의존성을 줄이고 `initApp()` 중심 조립 파일로 축소
-- `cacheElements()`와 `setupEvents()`를 `ui/domCache.js`, `ui/bootstrap.js`로 분리
+- `serviceRegistry` 내부로 engine wrapper 등록을 더 이동하고 `main.js` import 수 축소
+- `initApp()` 중심 bootstrap 파일 도입
 - 자산시장, 게임 runtime, 차트/canvas 렌더링 잔여 로직을 독립 모듈로 추가 이동
 - FRED adapter 안정화 및 backend proxy 배포/보안 옵션 보강
 - ECOS 실제 통계코드 매핑과 한국 공식 데이터 live 연동 확대

@@ -36,82 +36,19 @@ export function runSimulationStepEngine(context) {
       const callbacks = getEngineCallbacks(context);
       if (!shouldRunSimulationStep(state)) return;
       if (state.game.activeEvent) return;
-      callbacks.syncLivePolicy();
-      callbacks.applyAutomaticPolicyIfEnabled();
-      callbacks.syncLivePolicy();
+      runPolicyPreTickPhase(callbacks);
       state.tick += 1;
       resetTickAccountingEngine(context);
-      callbacks.advanceShockClock();
-      callbacks.advancePolicyTransmission();
-      callbacks.updateInterestRateStructure();
-
-      callbacks.updateMacroFinancialTransmission();
-      callbacks.updatePerceivedEconomy();
-      callbacks.updateExpectationsSystem();
-      callbacks.updateSentimentSystem();
-      callbacks.updateBehavioralSystem();
-      callbacks.updateExternalSector();
-      callbacks.updatePolicyCredibility();
-      callbacks.updateInterestRateStructure();
-      callbacks.updateFinancialMarkets();
-      callbacks.updateMacroFinancialTransmission();
-      callbacks.updatePerceivedEconomy();
-      callbacks.updateExpectationsSystem();
-      callbacks.updateSentimentSystem();
-      callbacks.updateBehavioralSystem();
-      callbacks.updateExternalSector();
-      callbacks.updatePolicyCredibility();
-      callbacks.updateInterestRateStructure();
-      callbacks.applyInterestEffects();
-      callbacks.computeDebtStress();
-      callbacks.propagateFinancialStress();
-      callbacks.updateWagePriceSpiral();
-      callbacks.updateLaborMarket();
-      callbacks.payWages();
-      callbacks.produceGoods();
-      callbacks.executeGovernmentSpending();
-      callbacks.executeConsumerPurchases();
-      callbacks.executeExternalTrade();
-      callbacks.executeProducerInvestment();
-      callbacks.adjustProducerPricesAndExpectations();
-      callbacks.collectProfitTaxes();
-      callbacks.updateMacroMetrics();
-      callbacks.updateExternalSector();
-      callbacks.updateAssetMarkets();
-      callbacks.updateFinancialMarkets();
-      callbacks.updateInterestRateStructure();
-      callbacks.updateMacroFinancialTransmission();
-      callbacks.updatePerceivedEconomy();
-      callbacks.updateExpectationsSystem();
-      callbacks.updateSentimentSystem();
-      callbacks.updateBehavioralSystem();
-      callbacks.updateFirmCreditRatings();
-      callbacks.updateZombieFirms();
-      callbacks.computeInequalityMetrics();
-      callbacks.computeSocialStress();
-      callbacks.computeMarketOutcome();
-      callbacks.updateCausalDecomposition();
-      callbacks.updateEarlyWarningSystem();
-      callbacks.advanceHistoricalScenarioTimeline();
-      callbacks.syncHistoricalScenarioMetrics();
-      callbacks.updateTaxSentimentMetrics();
-      callbacks.updateVulnerabilitySystem();
-      callbacks.applyWealthEffects();
-      callbacks.updateInflationExpectations();
-      callbacks.updateBusinessOutlook();
-      callbacks.updateConsumerConfidence();
-      callbacks.applySentimentToConsumers();
-      callbacks.applySentimentToFirms();
-      callbacks.stabilizeEconomy();
-      callbacks.sanitizeEconomy();
-      callbacks.repairSimulationState();
-      callbacks.updateSfcAccountingLayer();
-      callbacks.appendHistory();
-      callbacks.updateGameSystems();
-      if (!state.debug.suppressVisualUpdates) {
-        if (callbacks.shouldUpdateDomThisTick()) callbacks.safeUpdateAllDisplays();
-        callbacks.safeUpdateCharts();
-      }
+      runPolicyPhase(callbacks);
+      runExpectationPhase(callbacks);
+      runFinancePhase(callbacks);
+      runRealEconomyPhase(callbacks);
+      runAssetPhase(callbacks);
+      runDiagnosticPhase(callbacks);
+      runPostExpectationPhase(callbacks);
+      runSafetyPhase(callbacks);
+      runHistoryPhase(callbacks);
+      runRenderPhase(state, callbacks);
       state.debug.lastSuccessfulTickTime = performanceNow();
     }
 
@@ -159,6 +96,111 @@ export function resetTickAccountingEngine(context) {
         producer.unitsSoldTick = 0;
       });
     }
+
+function runPolicyPreTickPhase(callbacks) {
+  callbacks.syncLivePolicy();
+  callbacks.applyAutomaticPolicyIfEnabled();
+  callbacks.syncLivePolicy();
+}
+
+function runPolicyPhase(callbacks) {
+  callbacks.advanceShockClock();
+  callbacks.advancePolicyTransmission();
+  callbacks.updateInterestRateStructure();
+}
+
+function runExpectationPhase(callbacks) {
+  callbacks.updateMacroFinancialTransmission();
+  callbacks.updatePerceivedEconomy();
+  callbacks.updateExpectationsSystem();
+  callbacks.updateSentimentSystem();
+  callbacks.updateBehavioralSystem();
+  callbacks.updateExternalSector();
+  callbacks.updatePolicyCredibility();
+  callbacks.updateInterestRateStructure();
+}
+
+function runFinancePhase(callbacks) {
+  callbacks.updateFinancialMarkets();
+  callbacks.updateMacroFinancialTransmission();
+  callbacks.updatePerceivedEconomy();
+  callbacks.updateExpectationsSystem();
+  callbacks.updateSentimentSystem();
+  callbacks.updateBehavioralSystem();
+  callbacks.updateExternalSector();
+  callbacks.updatePolicyCredibility();
+  callbacks.updateInterestRateStructure();
+  callbacks.applyInterestEffects();
+  callbacks.computeDebtStress();
+  callbacks.propagateFinancialStress();
+}
+
+function runRealEconomyPhase(callbacks) {
+  callbacks.updateWagePriceSpiral();
+  callbacks.updateLaborMarket();
+  callbacks.payWages();
+  callbacks.produceGoods();
+  callbacks.executeGovernmentSpending();
+  callbacks.executeConsumerPurchases();
+  callbacks.executeExternalTrade();
+  callbacks.executeProducerInvestment();
+  callbacks.adjustProducerPricesAndExpectations();
+  callbacks.collectProfitTaxes();
+  callbacks.updateMacroMetrics();
+  callbacks.updateExternalSector();
+}
+
+function runAssetPhase(callbacks) {
+  callbacks.updateAssetMarkets();
+  callbacks.updateFinancialMarkets();
+  callbacks.updateInterestRateStructure();
+}
+
+function runDiagnosticPhase(callbacks) {
+  callbacks.updateMacroFinancialTransmission();
+  callbacks.updatePerceivedEconomy();
+  callbacks.updateExpectationsSystem();
+  callbacks.updateSentimentSystem();
+  callbacks.updateBehavioralSystem();
+  callbacks.updateFirmCreditRatings();
+  callbacks.updateZombieFirms();
+  callbacks.computeInequalityMetrics();
+  callbacks.computeSocialStress();
+  callbacks.computeMarketOutcome();
+  callbacks.updateCausalDecomposition();
+  callbacks.updateEarlyWarningSystem();
+  callbacks.advanceHistoricalScenarioTimeline();
+  callbacks.syncHistoricalScenarioMetrics();
+  callbacks.updateTaxSentimentMetrics();
+  callbacks.updateVulnerabilitySystem();
+}
+
+function runPostExpectationPhase(callbacks) {
+  callbacks.applyWealthEffects();
+  callbacks.updateInflationExpectations();
+  callbacks.updateBusinessOutlook();
+  callbacks.updateConsumerConfidence();
+  callbacks.applySentimentToConsumers();
+  callbacks.applySentimentToFirms();
+}
+
+function runSafetyPhase(callbacks) {
+  callbacks.stabilizeEconomy();
+  callbacks.sanitizeEconomy();
+  callbacks.repairSimulationState();
+}
+
+function runHistoryPhase(callbacks) {
+  callbacks.updateSfcAccountingLayer();
+  callbacks.appendHistory();
+  callbacks.updateGameSystems();
+}
+
+function runRenderPhase(state, callbacks) {
+  if (state.debug.suppressVisualUpdates) return;
+  if (callbacks.shouldUpdateDomThisTick()) callbacks.safeUpdateAllDisplays();
+  callbacks.safeUpdateCharts();
+}
 
 function getEngineCallbacks(context) {
   if (context.callbacks) return context.callbacks;

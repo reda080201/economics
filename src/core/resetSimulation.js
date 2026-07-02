@@ -29,13 +29,17 @@ import { createInitialMarketOutcome } from "../analysis/marketOutcome.js";
 export function resetSimulationState(context) {
   const {
     state,
-    readConfigFromControls,
-    createConsumers,
-    createProducers,
+    io = {},
+    agents = {},
+    lifecycle = {},
+    now = () => performance.now()
+  } = context;
+  const readConfigFromControls = io.readConfig;
+  const { createConsumers, createProducers, assignInitialEmployment } = agents;
+  const {
     initializePolicyState,
     createEmptyMetrics,
     resetGameStateForCurrentMode,
-    assignInitialEmployment,
     applyGameModeStartingConditions,
     updateMacroMetrics,
     updateMacroFinancialTransmission,
@@ -45,9 +49,8 @@ export function resetSimulationState(context) {
     updateBehavioralSystem,
     updateGameSummaryStats,
     computeScore,
-    updateObjectives,
-    now = () => performance.now()
-  } = context;
+    updateObjectives
+  } = lifecycle;
 
   state.config = readConfigFromControls();
   state.tick = 0;
