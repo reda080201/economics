@@ -40,13 +40,35 @@ import {
 } from "./core/mathUtils.js";
 import {
   capacityLabel,
+  accuracyLabel,
+  behavioralLabel,
+  classStatusLabel,
+  compactMoney,
   creditRatingLabelFromScore,
   creditRatingScore,
+  fearGreedLabel,
+  formatIndexPoint,
+  formatSigned,
+  formatStockReturn,
   giniCoefficient,
+  housingStatusLabel,
+  intensityLabel,
+  money,
   mostFrequent,
+  percent,
+  expectationMoodLabel,
+  perceptionGapLabel,
+  propertyExposureLabel,
+  realEstateStressLabel,
   riskLabel,
   sectorLabel,
-  sentimentLabel
+  sentimentLabel,
+  signedPercent,
+  stockRiskSentimentLabel,
+  stockVolatilityIndexLabel,
+  stockVolatilityLabel,
+  translatePreference,
+  valuationPressureLabel
 } from "./core/formatUtils.js";
 import { createInitialAppState } from "./core/stateFactory.js";
 import {
@@ -92,6 +114,8 @@ import {
   computeCausalPressureScores as computeCausalPressureScoresAnalysis,
   updateCausalDecomposition as updateCausalDecompositionAnalysis
 } from "./analysis/causalDecomposition.js";
+import { createDeveloperValidationRuntime } from "./analysis/developerValidation.js";
+import { createExperimentRuntime } from "./analysis/experimentRuntime.js";
 import {
   createInitialEarlyWarning,
   earlyWarningReasonLabel as earlyWarningReasonLabelAnalysis,
@@ -118,6 +142,7 @@ import {
   calculateInvestment,
   calculateUnemploymentChange
 } from "./economy/responseFunctions.js";
+import { createAgentMacroRuntime } from "./agents/agentMacroRuntime.js";
 import {
   fireConsumer as fireConsumerEngine,
   fireShareOfWorkers as fireShareOfWorkersEngine,
@@ -176,6 +201,19 @@ import { hydrateScenarioSelect } from "./ui/controls.js";
 import { cacheElements as cacheDomElements } from "./ui/domCache.js";
 import { setupEvents as setupUiEvents } from "./ui/events.js";
 import {
+  clearCharts as clearChartsPanel,
+  setupChartDatasetToggles as setupChartDatasetTogglesPanel,
+  setupCharts as setupChartsPanel,
+  updateCharts as updateChartsPanel
+} from "./ui/charts.js";
+import {
+  handleCanvasClick as handleCanvasClickPanel,
+  handleCanvasHover as handleCanvasHoverPanel,
+  hideCanvasTooltip as hideCanvasTooltipPanel,
+  renderSimulation as renderSimulationPanel,
+  safeRenderSimulation as safeRenderSimulationPanel
+} from "./ui/canvasRenderer.js";
+import {
   clearDataApiKeys as clearDataApiKeysPanel,
   runLiveDataLoadMode as runLiveDataLoadModePanel,
   runBacktestMode as runBacktestModePanel,
@@ -199,13 +237,10 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
 "use strict";
 
     // ===== 설정과 전역 상태 =====
-    // 모든 에이전트와 정책 변수는 이 state 객체에 보관한다.
-    // 백엔드 없이 브라우저 메모리 안에서만 시뮬레이션이 진행된다.
     const els = {};
     const state = createInitialAppState();
 
     // ===== 초기화 =====
-    // DOM이 준비되면 차트, 이벤트, 에이전트 상태를 한 번에 연결한다.
     document.addEventListener("DOMContentLoaded", () => {
       cacheElements();
       hydrateScenarioSelect(els.scenarioSelect, scenarioSelectGroups);
@@ -2617,159 +2652,123 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
       state.metrics.aggregateSupplyPressure = previous.aggregateSupplyPressure;
     }
 
-    function updateSentimentSystem() {
-      if (!state.sentiment) state.sentiment = createInitialSentimentState();
-      const sentiment = state.sentiment;
-      const transmission = state.macroFinancial || createInitialMacroFinancialTransmission(state.config);
-      const info = state.information || createInitialInformationSystem();
-      const perceived = state.perceived || createInitialPerceivedEconomy();
-      const unemploymentTrend = getRecentUnemploymentTrend();
-      const gdpGrowth = getGDPGrowthWindow();
-      const stockLoss = Math.max(0, -safeNumber(state.metrics.stockReturn, 0)) / 8;
-      const housingLoss = Math.max(0, -safeNumber(state.metrics.housingReturn, 0)) / 4;
-      const debtBurden = clamp(safeNumber(state.metrics.averageHouseholdDebtBurden, 0) / 28, 0, 1);
-      const mortgageBurden = clamp(safeNumber(state.metrics.averageMortgageBurden, 0) / 18, 0, 1);
-      const realIncomePressure = clamp(Math.max(0, state.metrics.inflation - state.metrics.wageGrowth) / 7, 0, 1);
-      const inventoryBurden = clamp(Math.max(0, safeNumber(state.metrics.inventoryToDemand, 1) - 1.6) / 2.8, 0, 1);
-      const bankStress = safeNumber(state.metrics.bankStress, safeNumber(state.financialMarket?.bankStress, 0));
-      const fiscalStress = clamp(1 - safeNumber(transmission.fiscalSpace, 1), 0, 1);
-      const policyShock = getRecentPolicyShock();
-      const mixedMandate = state.metrics.inflationGap > 1.2 && state.metrics.unemploymentGap > 1.2 ? 0.16 : 0;
-
-      const recessionTarget = clamp(
-        Math.max(0, unemploymentTrend) * 0.040 + Math.max(0, -gdpGrowth) * 0.035 + stockLoss * 0.16 + housingLoss * 0.18 + bankStress * 0.28 + Math.max(0, state.metrics.outputGap * -0.018) + safeNumber(perceived.recessionRisk, 0.2) * 0.12 + safeNumber(info.rumorIntensity, 0) * 0.10,
-        0,
-        1
-      );
-      const inflationExpectationTarget = clamp(
-        TARGET_INFLATION * 0.46 + state.metrics.inflation * 0.20 + safeNumber(perceived.expectedInflation, state.metrics.inflation) * 0.18 + state.metrics.wageGrowth * 0.08 + safeNumber(state.metrics.safeHavenDemand, 0) * 0.010 + fiscalStress * 1.15 - Math.max(0, state.metrics.unemploymentGap) * 0.045,
-        -1,
-        7
-      );
-      const debtCredibilityPressure = Math.max(0, safeNumber(state.metrics.debtToGdpRatio, 0) - 1.60);
-      const fiscalCredibilityTarget = clamp(
-        0.86 - debtCredibilityPressure * 0.07 - Math.max(0, -state.metrics.governmentBalance) / Math.max(700, state.metrics.gdp * 5.0) * 0.10 - Math.max(0, state.metrics.bondYield - state.metrics.interestRatePercent) * 0.010 - Math.max(0, state.metrics.inflationGap) * 0.025 + Math.max(0, gdpGrowth) * 0.012,
-        0,
-        1
-      );
-      const consumerTarget = clamp(
-        0.92 - debtBurden * 0.22 - mortgageBurden * 0.16 - realIncomePressure * 0.22 - Math.max(0, unemploymentTrend) * 0.025 - recessionTarget * 0.25 - safeNumber(info.rumorIntensity, 0) * 0.06 - safeNumber(info.misperceptionIndex, 0.12) * 0.05 + transmission.wealthEffect * 1.25 + Math.max(0, state.metrics.averageConfidence - 0.9) * 0.06,
-        0,
-        1.2
-      );
-      const businessTarget = clamp(
-        0.90 + clamp(state.metrics.averageFirmProfit / 900, -0.20, 0.18) + clamp(gdpGrowth * 0.010, -0.12, 0.12) - inventoryBurden * 0.23 - safeNumber(transmission.creditSpread, 0.02) * 1.45 - recessionTarget * 0.22 - policyShock * 0.14 - safeNumber(info.informationUncertainty, 0.16) * 0.08 + safeNumber(perceived.expectedEarningsGrowth, 0) * 0.70 + (safeNumber(state.metrics.stockReturn, 0) / 100) * 0.45,
-        0,
-        1.2
-      );
-      const bankRiskTarget = clamp(
-        0.86 - bankStress * 0.62 - safeNumber(perceived.bankStress, bankStress) * 0.10 - safeNumber(state.metrics.nonPerformingLoanRatio, 0) * 0.018 - stockLoss * 0.16 - housingLoss * 0.22 - safeNumber(info.rumorType === "bank" ? info.rumorIntensity * 0.16 : 0, 0) - Math.max(0, unemploymentTrend) * 0.018 + Math.max(0, gdpGrowth) * 0.008,
-        0,
-        1.1
-      );
-      const marketRiskTarget = clamp(
-        0.80 + safeNumber(state.metrics.stockReturn, 0) * 0.018 + safeNumber(state.metrics.housingReturn, 0) * 0.012 - safeNumber(transmission.riskAversion, 0.2) * 0.35 - recessionTarget * 0.18 - policyShock * 0.12 - safeNumber(info.marketOverreaction, 0.1) * 0.10,
-        0,
-        1.1
-      );
-      const bubbleTarget = clamp(safeNumber(state.metrics.assetBubbleRiskScore, 0) * 0.62 + Math.max(0, transmission.wealthEffect) * 2.1 + Math.max(0, TARGET_UNEMPLOYMENT - state.metrics.unemploymentRate) * 0.025 - transmission.effectivePolicyRate * 1.2, 0, 1);
-      const safeHavenTarget = clamp(safeNumber(state.metrics.safeHavenDemand, 0) / 100 * 0.62 + recessionTarget * 0.25 + bankStress * 0.20 + fiscalStress * 0.18 + Math.max(0, state.metrics.inflationGap) * 0.035, 0, 1);
-      const policyCredibilityTarget = clamp((fiscalCredibilityTarget * 0.55) + (Math.abs(state.metrics.inflationGap) < 1 ? 0.24 : 0.10) + (Math.abs(state.metrics.unemploymentGap) < 2 ? 0.16 : 0.05) - policyShock * 0.18 - mixedMandate, 0, 1);
-      const policyUncertaintyTarget = clamp(policyShock * 0.55 + mixedMandate + (1 - fiscalCredibilityTarget) * 0.18 + Math.abs(state.metrics.policyGap) * 0.012, 0, 1);
-
-      sentiment.consumerConfidence = sentimentSmoothing(sentiment.consumerConfidence, consumerTarget);
-      sentiment.businessConfidence = sentimentSmoothing(sentiment.businessConfidence, businessTarget);
-      sentiment.bankRiskAppetite = sentimentSmoothing(sentiment.bankRiskAppetite, bankRiskTarget);
-      sentiment.marketRiskSentiment = sentimentSmoothing(sentiment.marketRiskSentiment, marketRiskTarget);
-      sentiment.fiscalCredibility = sentimentSmoothing(sentiment.fiscalCredibility, fiscalCredibilityTarget);
-      sentiment.policyCredibility = sentimentSmoothing(sentiment.policyCredibility, policyCredibilityTarget);
-      sentiment.policyUncertainty = sentimentSmoothing(sentiment.policyUncertainty, policyUncertaintyTarget);
-      sentiment.recessionFear = sentimentSmoothing(sentiment.recessionFear, recessionTarget);
-      sentiment.inflationExpectations = smoothValue(safeNumber(sentiment.inflationExpectations, TARGET_INFLATION), inflationExpectationTarget, inflationExpectationTarget > sentiment.inflationExpectations ? 0.10 : 0.055);
-      sentiment.wageExpectationPressure = clamp(smoothValue(safeNumber(sentiment.wageExpectationPressure, 0.1), Math.max(0, sentiment.inflationExpectations - TARGET_INFLATION) / 5 + Math.max(0, -state.metrics.unemploymentGap) * 0.025, 0.08), 0, 1);
-      sentiment.priceSettingConfidence = clamp(smoothValue(safeNumber(sentiment.priceSettingConfidence, 0.58), 0.50 + Math.max(0, sentiment.inflationExpectations - TARGET_INFLATION) * 0.08 + Math.max(0, transmission.aggregateDemandPressure - 1) * 0.15 - inventoryBurden * 0.16, 0.08), 0, 1);
-      sentiment.assetBubblePsychology = sentimentSmoothing(sentiment.assetBubblePsychology, bubbleTarget);
-      sentiment.safeHavenSentiment = sentimentSmoothing(sentiment.safeHavenSentiment, safeHavenTarget);
-      sentiment.debtConcern = sentimentSmoothing(sentiment.debtConcern, clamp(debtBurden * 0.38 + mortgageBurden * 0.28 + fiscalStress * 0.18 + state.metrics.creditSpread * 0.018, 0, 1));
-      sentiment.consumerLabel = sentimentLabel(sentiment.consumerConfidence, true);
-      sentiment.businessLabel = sentimentLabel(sentiment.businessConfidence, true);
-      sentiment.bankRiskLabel = sentimentLabel(sentiment.bankRiskAppetite, true);
-      sentiment.marketRiskLabel = sentimentLabel(sentiment.marketRiskSentiment, true);
-      sentiment.recessionLabel = riskLabel(sentiment.recessionFear);
-      sentiment.fiscalCredibilityLabel = sentimentLabel(sentiment.fiscalCredibility, true);
-      syncSentimentMetrics();
-    }
-
-    function updatePerceivedEconomy() {
-      updateInformationSystem();
-    }
-
-    function updateInformationSystem() {
-      if (!state.information) state.information = createInitialInformationSystem();
-      if (!state.perceived) state.perceived = createInitialPerceivedEconomy();
-      const info = state.information;
-      const perceived = state.perceived;
-      const transmission = state.macroFinancial || createInitialMacroFinancialTransmission(state.config);
-      computeRumorEffects();
-
-      const volatilityPressure = clamp(safeNumber(state.assetMarket?.stockVolatilityIndex, 18) / 60, 0, 1);
-      const crisisPressure = clamp(
-        safeNumber(state.metrics.bankStress, 0) * 0.28
-          + safeNumber(state.metrics.recessionFear, 0.2) * 0.20
-          + volatilityPressure * 0.20
-          + safeNumber(info.rumorIntensity, 0) * 0.18
-          + safeNumber(state.metrics.policyUncertainty, 0.12) * 0.14,
-        0,
-        1
-      );
-      const clarityTarget = clamp(0.86 - getRecentPolicyShock() * 0.30 - Math.max(0, Math.abs(state.metrics.inflationGap) - 1.0) * 0.035 - Math.max(0, 0.45 - state.metrics.fiscalCredibility) * 0.18, 0.25, 0.95);
-      info.policyClarity = informationSmooth(info.policyClarity, clarityTarget, true);
-      info.publicInformationQuality = informationSmooth(info.publicInformationQuality, clamp(0.86 - crisisPressure * 0.32 + info.policyClarity * 0.10, 0.35, 0.95), true);
-      info.householdInformationAccuracy = informationSmooth(info.householdInformationAccuracy, clamp(info.publicInformationQuality - 0.10 - info.rumorIntensity * 0.12 + info.policyClarity * 0.04, 0.25, 0.92), true);
-      info.firmInformationAccuracy = informationSmooth(info.firmInformationAccuracy, clamp(info.publicInformationQuality - 0.03 - info.rumorIntensity * 0.07 + Math.max(0, state.metrics.salesPressure - 1) * 0.03, 0.35, 0.95), true);
-      info.bankInformationAccuracy = informationSmooth(info.bankInformationAccuracy, clamp(0.88 - volatilityPressure * 0.10 - info.rumorIntensity * 0.06, 0.45, 0.97), true);
-      info.marketInformationAccuracy = informationSmooth(info.marketInformationAccuracy, clamp(info.publicInformationQuality - volatilityPressure * 0.18 - info.rumorIntensity * 0.15, 0.25, 0.93), true);
-      info.informationDelay = clamp(smoothValue(info.informationDelay, 0.08 + (1 - info.publicInformationQuality) * 0.30 + info.rumorIntensity * 0.12, 0.08), 0.05, 0.55);
-      info.informationUncertainty = clamp(smoothValue(info.informationUncertainty, (1 - info.publicInformationQuality) * 0.55 + info.rumorIntensity * 0.30 + volatilityPressure * 0.20, 0.10), 0, 1);
-
-      const actual = {
-        unemployment: safeNumber(state.metrics.unemploymentRate, TARGET_UNEMPLOYMENT),
-        inflation: safeNumber(state.metrics.inflation, TARGET_INFLATION),
-        gdpGrowth: getGDPGrowthWindow(),
-        firmProfitability: clamp(safeNumber(state.metrics.averageFirmProfit, 0) / 800, -1, 1),
-        bankStress: safeNumber(state.metrics.bankStress, 0.12),
-        assetMarketRisk: clamp(safeNumber(state.metrics.assetBubbleRiskScore, 0) * 0.45 + safeNumber(state.metrics.stockDrawdown, 0) / 100 * 0.35 + volatilityPressure * 0.20, 0, 1),
-        fiscalRisk: clamp((1 - safeNumber(transmission.fiscalSpace, 1)) * 0.60 + Math.max(0, state.metrics.debtToGdpRatio - 1) * 0.16, 0, 1),
-        recessionRisk: clamp(safeNumber(state.metrics.recessionFear, 0.2) * 0.55 + Math.max(0, -getGDPGrowthWindow()) * 0.035 + Math.max(0, state.metrics.unemploymentGap) * 0.035, 0, 1),
-        housingRisk: clamp(Math.max(0, state.metrics.housingAffordability - 1.2) * 0.35 + Math.max(0, -state.metrics.housingReturn) * 0.08 + state.metrics.negativeEquityRatio / 100 * 0.25, 0, 1),
-        stockMarketRisk: clamp(safeNumber(state.metrics.stockDrawdown, 0) / 100 * 0.40 + volatilityPressure * 0.35 + Math.max(0, 0.50 - safeNumber(state.metrics.marketRiskSentiment, 0.7)) * 0.25, 0, 1),
-        jobSecurity: clamp(1 - safeNumber(state.metrics.unemploymentRate, TARGET_UNEMPLOYMENT) / 24 - Math.max(0, getRecentUnemploymentTrend()) * 0.030 - safeNumber(state.metrics.recessionFear, 0.2) * 0.18, 0, 1),
-        housingBurden: clamp(safeNumber(state.metrics.housingAffordability, 1) / 2.6 + safeNumber(state.metrics.averageMortgageBurden, 0) / 42, 0, 1),
-        financialStress: clamp(safeNumber(state.metrics.financialConditionIndex, 0) / 12 + safeNumber(state.metrics.averageHouseholdDebtBurden, 0) / 45 + safeNumber(state.metrics.bankStress, 0) * 0.28, 0, 1),
-        policyCredibility: clamp((safeNumber(state.metrics.centralBankCredibility, 0.78) + safeNumber(state.metrics.fiscalCredibility, 0.78)) / 2, 0, 1)
+    // ===== 심리·정보·행동·계층·취약성 런타임 =====
+    function createAgentMacroContext() {
+      return {
+        state,
+        CALIBRATION,
+        TARGET_INFLATION,
+        TARGET_UNEMPLOYMENT,
+        TICKS_PER_MONTH,
+        applyInertia,
+        average,
+        behavioralLabel,
+        classStatusLabel,
+        clamp,
+        computeNonlinearStress,
+        createInitialBehavioralState,
+        createInitialClassAnalysis,
+        createInitialInformationSystem,
+        createInitialMacroFinancialTransmission,
+        createInitialPerceivedEconomy,
+        createInitialSentimentState,
+        createInitialVulnerabilityState,
+        creditRatingScore,
+        effectiveBaseWage,
+        expectationMoodLabel,
+        giniCoefficient,
+        getGDPGrowthWindow,
+        getRecentPolicyShock,
+        getRecentUnemploymentTrend,
+        householdClassOrder,
+        informationSmooth,
+  perceptionGapLabel,
+        riskLabel,
+        safeNumber,
+        safeValue,
+        sectorLabel,
+        sentimentLabel,
+        sentimentSmoothing,
+        smoothValue,
+        sum,
+        updatePerceivedValue
       };
+    }
 
-      perceived.unemployment = updatePerceivedValue(perceived.unemployment, actual.unemployment, actual.unemployment > perceived.unemployment, info.householdInformationAccuracy);
-      perceived.inflation = updatePerceivedValue(perceived.inflation, actual.inflation, actual.inflation > perceived.inflation, info.householdInformationAccuracy);
-      perceived.gdpGrowth = updatePerceivedValue(perceived.gdpGrowth, actual.gdpGrowth, actual.gdpGrowth < perceived.gdpGrowth, info.publicInformationQuality);
-      perceived.firmProfitability = updatePerceivedValue(perceived.firmProfitability, actual.firmProfitability, actual.firmProfitability < perceived.firmProfitability, info.firmInformationAccuracy);
-      perceived.bankStress = updatePerceivedValue(perceived.bankStress, actual.bankStress, actual.bankStress > perceived.bankStress, info.bankInformationAccuracy);
-      perceived.assetMarketRisk = updatePerceivedValue(perceived.assetMarketRisk, actual.assetMarketRisk, actual.assetMarketRisk > perceived.assetMarketRisk, info.marketInformationAccuracy);
-      perceived.fiscalRisk = updatePerceivedValue(perceived.fiscalRisk, actual.fiscalRisk, actual.fiscalRisk > perceived.fiscalRisk, info.publicInformationQuality);
-      perceived.recessionRisk = updatePerceivedValue(perceived.recessionRisk, actual.recessionRisk, actual.recessionRisk > perceived.recessionRisk, info.householdInformationAccuracy);
-      perceived.housingRisk = updatePerceivedValue(perceived.housingRisk, actual.housingRisk, actual.housingRisk > perceived.housingRisk, info.householdInformationAccuracy);
-      perceived.stockMarketRisk = updatePerceivedValue(perceived.stockMarketRisk, actual.stockMarketRisk, actual.stockMarketRisk > perceived.stockMarketRisk, info.marketInformationAccuracy);
-      perceived.jobSecurity = updatePerceivedValue(safeNumber(perceived.jobSecurity, 0.75), actual.jobSecurity, actual.jobSecurity < safeNumber(perceived.jobSecurity, 0.75), info.householdInformationAccuracy);
-      perceived.housingBurden = updatePerceivedValue(safeNumber(perceived.housingBurden, 0.35), actual.housingBurden, actual.housingBurden > safeNumber(perceived.housingBurden, 0.35), info.householdInformationAccuracy);
-      perceived.financialStress = updatePerceivedValue(safeNumber(perceived.financialStress, 0.20), actual.financialStress, actual.financialStress > safeNumber(perceived.financialStress, 0.20), info.publicInformationQuality);
-      perceived.policyCredibility = updatePerceivedValue(safeNumber(perceived.policyCredibility, 0.78), actual.policyCredibility, actual.policyCredibility < safeNumber(perceived.policyCredibility, 0.78), info.publicInformationQuality);
+    function createAgentMacroRuntimeContext() {
+      return createAgentMacroRuntime(createAgentMacroContext());
+    }
 
-      const riskGap = Math.abs(perceived.recessionRisk - actual.recessionRisk) + Math.abs(perceived.bankStress - actual.bankStress) + Math.abs(perceived.assetMarketRisk - actual.assetMarketRisk);
-      info.misperceptionIndex = clamp(smoothValue(info.misperceptionIndex, riskGap / 3 + info.rumorIntensity * 0.30 + info.newsShockIntensity * 0.15, 0.10), 0, 1);
-      info.marketOverreaction = clamp(smoothValue(info.marketOverreaction, Math.max(0, perceived.stockMarketRisk - actual.stockMarketRisk) * 0.55 + info.rumorIntensity * 0.22 + volatilityPressure * 0.18, 0.10), 0, 1);
-      info.expectationError = clamp(smoothValue(info.expectationError, Math.abs(safeNumber(state.sentiment?.inflationExpectations, TARGET_INFLATION) - actual.inflation) / 6 + Math.abs(safeNumber(state.assetMarket?.stockExpectation, 0) - safeNumber(state.assetMarket?.stockMonthlyReturn, 0) / 100) * 2.0, 0.08), 0, 1);
-      info.label = info.misperceptionIndex > 0.65 ? "불안" : info.misperceptionIndex > 0.38 ? "주의" : "안정";
-      syncInformationMetrics();
+    function updateSentimentSystem(...args) {
+      return createAgentMacroRuntimeContext().updateSentimentSystem(...args);
+    }
+
+    function updatePerceivedEconomy(...args) {
+      return createAgentMacroRuntimeContext().updatePerceivedEconomy(...args);
+    }
+
+    function updateInformationSystem(...args) {
+      return createAgentMacroRuntimeContext().updateInformationSystem(...args);
+    }
+
+    function computeRumorEffects(...args) {
+      return createAgentMacroRuntimeContext().computeRumorEffects(...args);
+    }
+
+    function updateExpectationsSystem(...args) {
+      return createAgentMacroRuntimeContext().updateExpectationsSystem(...args);
+    }
+
+    function syncInformationMetrics(...args) {
+      return createAgentMacroRuntimeContext().syncInformationMetrics(...args);
+    }
+
+    function syncSentimentMetrics(...args) {
+      return createAgentMacroRuntimeContext().syncSentimentMetrics(...args);
+    }
+
+    function updateBehavioralSystem(...args) {
+      return createAgentMacroRuntimeContext().updateBehavioralSystem(...args);
+    }
+
+    function computeHerdBehavior(...args) {
+      return createAgentMacroRuntimeContext().computeHerdBehavior(...args);
+    }
+
+    function syncBehaviorMetrics(...args) {
+      return createAgentMacroRuntimeContext().syncBehaviorMetrics(...args);
+    }
+
+    function computeInequalityMetrics(...args) {
+      return createAgentMacroRuntimeContext().computeInequalityMetrics(...args);
+    }
+
+    function computeClassMetrics(...args) {
+      return createAgentMacroRuntimeContext().computeClassMetrics(...args);
+    }
+
+    function computeClassSentiment(...args) {
+      return createAgentMacroRuntimeContext().computeClassSentiment(...args);
+    }
+
+    function computeClassStress(...args) {
+      return createAgentMacroRuntimeContext().computeClassStress(...args);
+    }
+
+    function computeClassMainPressure(...args) {
+      return createAgentMacroRuntimeContext().computeClassMainPressure(...args);
+    }
+
+    function computeClassPolicyDemand(...args) {
+      return createAgentMacroRuntimeContext().computeClassPolicyDemand(...args);
+    }
+
+    function computeSocialStress(...args) {
+      return createAgentMacroRuntimeContext().computeSocialStress(...args);
+    }
+
+    function updateVulnerabilitySystem(...args) {
+      return createAgentMacroRuntimeContext().updateVulnerabilitySystem(...args);
     }
 
     function updatePerceivedValue(oldValue, actualValue, badNews, accuracy) {
@@ -2789,107 +2788,6 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
       return clamp(oldSafe * (1 - alpha) + targetValue * alpha, 0, 1.2);
     }
 
-    function computeRumorEffects() {
-      const info = state.information;
-      if (!info) return;
-      const decay = Math.pow(0.5, 1 / Math.max(4, safeNumber(info.rumorHalfLife, 18)));
-      info.rumorIntensity = clamp(safeNumber(info.rumorIntensity, 0) * decay, 0, 1);
-      info.newsShockIntensity = clamp(safeNumber(info.newsShockIntensity, 0) * 0.92, 0, 1);
-      if (state.tick > TICKS_PER_MONTH * 6 && state.tick - safeNumber(info.lastRumorTick, -999) > TICKS_PER_MONTH * 10 && Math.random() < 0.0025) {
-        const candidates = [
-          { type: "recession", label: "경기침체 우려 확산", credibility: 0.48 },
-          { type: "bank", label: "은행 부실 루머", credibility: 0.42 },
-          { type: "housing", label: "부동산 가격 하락 우려", credibility: 0.44 },
-          { type: "rateCut", label: "금리 인하 기대 확대", credibility: 0.38 },
-          { type: "earnings", label: "기업 실적 개선 기대", credibility: 0.34 },
-          { type: "fiscal", label: "정부 재정 신뢰도 논란", credibility: 0.40 },
-          { type: "inflation", label: "인플레이션 재가속 우려", credibility: 0.45 }
-        ];
-        const rumor = candidates[Math.floor(Math.random() * candidates.length)];
-        info.rumorType = rumor.type;
-        info.rumorIntensity = clamp(info.rumorIntensity + rand(0.18, 0.36), 0, 1);
-        info.rumorCredibility = clamp(rumor.credibility + safeNumber(state.financialMarket?.bankStress, 0) * 0.15 + safeNumber(state.sentiment?.policyUncertainty, 0.1) * 0.10, 0.15, 0.85);
-        info.newsShockIntensity = clamp(info.newsShockIntensity + info.rumorIntensity * 0.35, 0, 1);
-        info.lastRumorTick = state.tick;
-        pushEvent(`${rumor.label}: 시장 인식과 심리에 먼저 반영됩니다.`);
-      }
-    }
-
-    function updateExpectationsSystem() {
-      if (!state.perceived) state.perceived = createInitialPerceivedEconomy();
-      if (!state.assetMarket) state.assetMarket = createInitialAssetMarket();
-      const perceived = state.perceived;
-      const asset = state.assetMarket;
-      const info = state.information || createInitialInformationSystem();
-      const sentiment = state.sentiment || createInitialSentimentState();
-      perceived.expectedInflation = clamp(
-        safeNumber(perceived.expectedInflation, TARGET_INFLATION) * 0.85
-          + safeNumber(perceived.inflation, TARGET_INFLATION) * 0.10
-          + TARGET_INFLATION * 0.05
-          + safeNumber(info.rumorType === "inflation" ? info.rumorIntensity * 0.45 : 0, 0)
-          - Math.max(0, safeNumber(perceived.recessionRisk, 0.2) - 0.5) * 0.08,
-        -1,
-        7
-      );
-      perceived.expectedDemand = clamp(
-        safeNumber(perceived.expectedDemand, 1) * 0.75
-          + clamp(safeNumber(state.metrics.salesPressure, 1), 0.4, 1.8) * 0.15
-          + clamp(safeNumber(sentiment.businessConfidence, 0.8), 0.2, 1.2) * 0.10,
-        0.35,
-        1.9
-      );
-      perceived.expectedRatePath = clamp(
-        safeNumber(perceived.expectedRatePath, state.government?.interestRate || 0.03) * 0.84
-          + safeNumber(state.macroFinancial?.effectivePolicyRate, 0.03) * 0.10
-          + (info.rumorType === "rateCut" ? -info.rumorIntensity * 0.010 : 0)
-          + Math.max(0, state.metrics.inflationGap) * 0.0015,
-        0,
-        0.25
-      );
-      perceived.expectedEarningsGrowth = clamp(
-        safeNumber(perceived.expectedEarningsGrowth, 0) * 0.78
-          + clamp(safeNumber(state.metrics.averageFirmProfit, 0) / 1000, -0.10, 0.10) * 0.12
-          + safeNumber(perceived.gdpGrowth, 0) / 100 * 0.10
-          - safeNumber(perceived.recessionRisk, 0.2) * 0.025
-          + (info.rumorType === "earnings" ? info.rumorIntensity * 0.025 : 0),
-        -0.12,
-        0.14
-      );
-      perceived.expectedHousingTrend = clamp(safeNumber(perceived.expectedHousingTrend, 0) * 0.82 + safeNumber(state.metrics.housingReturn, 0) / 100 * 0.10 - safeNumber(perceived.housingRisk, 0.15) * 0.015, -0.08, 0.08);
-      asset.expectedEarningsGrowth = perceived.expectedEarningsGrowth;
-      asset.expectedRatePath = perceived.expectedRatePath;
-      asset.expectedRiskPremium = clamp(0.035 + safeNumber(perceived.stockMarketRisk, 0.2) * 0.035 + safeNumber(info.informationUncertainty, 0.16) * 0.020 - safeNumber(sentiment.marketRiskSentiment, 0.7) * 0.010, 0.015, 0.14);
-      asset.stockExpectation = clamp(asset.expectedEarningsGrowth - Math.max(0, asset.expectedRatePath - NEUTRAL_INTEREST_RATE / 100) * 0.35 - asset.expectedRiskPremium * 0.18 + (safeNumber(asset.fearGreedIndex, 50) - 50) / 1000, -0.14, 0.16);
-      asset.expectationError = clamp(smoothValue(safeNumber(asset.expectationError, 0), safeNumber(asset.stockMonthlyReturn, 0) / 100 - asset.stockExpectation, 0.08), -0.35, 0.35);
-    }
-
-    function syncInformationMetrics() {
-      if (!state.metrics || !state.information || !state.perceived) return;
-      const i = state.information;
-      const p = state.perceived;
-      state.metrics.publicInformationQuality = safeNumber(i.publicInformationQuality, 0.82);
-      state.metrics.householdInformationAccuracy = safeNumber(i.householdInformationAccuracy, 0.70);
-      state.metrics.firmInformationAccuracy = safeNumber(i.firmInformationAccuracy, 0.78);
-      state.metrics.bankInformationAccuracy = safeNumber(i.bankInformationAccuracy, 0.86);
-      state.metrics.marketInformationAccuracy = safeNumber(i.marketInformationAccuracy, 0.74);
-      state.metrics.policyClarity = safeNumber(i.policyClarity, 0.78);
-      state.metrics.rumorIntensity = safeNumber(i.rumorIntensity, 0);
-      state.metrics.newsShockIntensity = safeNumber(i.newsShockIntensity, 0);
-      state.metrics.informationDelay = safeNumber(i.informationDelay, 0.18);
-      state.metrics.misperceptionIndex = safeNumber(i.misperceptionIndex, 0.12);
-      state.metrics.informationUncertainty = safeNumber(i.informationUncertainty, 0.16);
-      state.metrics.marketOverreaction = safeNumber(i.marketOverreaction, 0.10);
-      state.metrics.expectationError = safeNumber(i.expectationError, 0);
-      state.metrics.perceivedUnemployment = safeNumber(p.unemployment, TARGET_UNEMPLOYMENT);
-      state.metrics.perceivedInflation = safeNumber(p.inflation, TARGET_INFLATION);
-      state.metrics.perceivedRecessionRisk = safeNumber(p.recessionRisk, 0.2);
-      state.metrics.perceivedBankStress = safeNumber(p.bankStress, 0.12);
-      state.metrics.perceivedJobSecurity = safeNumber(p.jobSecurity, 0.75);
-      state.metrics.perceivedHousingBurden = safeNumber(p.housingBurden, 0.35);
-      state.metrics.perceivedFinancialStress = safeNumber(p.financialStress, 0.20);
-      state.metrics.perceivedPolicyCredibility = safeNumber(p.policyCredibility, 0.78);
-    }
-
     function sentimentSmoothing(oldValue, targetValue) {
       const oldSafe = safeNumber(oldValue, targetValue);
       const alpha = targetValue < oldSafe ? 0.18 : 0.08;
@@ -2905,133 +2803,6 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
       return clamp(rateGap + taxGap + corporateTaxGap + spendingGap, 0, 1);
     }
 
-    function syncSentimentMetrics() {
-      if (!state.metrics || !state.sentiment) return;
-      const s = state.sentiment;
-      state.metrics.consumerSentiment = safeNumber(s.consumerConfidence, 0.8);
-      state.metrics.businessSentiment = safeNumber(s.businessConfidence, 0.8);
-      state.metrics.bankRiskAppetite = safeNumber(s.bankRiskAppetite, 0.7);
-      state.metrics.marketRiskSentiment = safeNumber(s.marketRiskSentiment, 0.7);
-      state.metrics.fiscalCredibility = safeNumber(s.fiscalCredibility, 0.75);
-      state.metrics.policyCredibility = safeNumber(s.policyCredibility, 0.75);
-      state.metrics.policyUncertainty = safeNumber(s.policyUncertainty, 0.1);
-      state.metrics.sentimentInflationExpectations = safeNumber(s.inflationExpectations, TARGET_INFLATION);
-      state.metrics.recessionFear = safeNumber(s.recessionFear, 0.2);
-      state.metrics.assetBubblePsychology = safeNumber(s.assetBubblePsychology, 0.1);
-      state.metrics.safeHavenSentiment = safeNumber(s.safeHavenSentiment, 0.1);
-      state.metrics.debtConcern = safeNumber(s.debtConcern, 0.1);
-    }
-
-    function updateBehavioralSystem() {
-      // 행동경제 레이어: 가격과 기초여건 사이의 괴리, 군중심리, 불패 믿음이 실제 의사결정에 작은 편향으로 반영된다.
-      if (!state.behavior) state.behavior = createInitialBehavioralState();
-      const b = state.behavior;
-      const info = state.information || createInitialInformationSystem();
-      const sentiment = state.sentiment || createInitialSentimentState();
-      const asset = state.assetMarket || createInitialAssetMarket();
-      const realEstate = state.realEstate || createInitialRealEstateMarket();
-      const financial = state.financialMarket || createInitialFinancialMarket(state.config);
-      const avgDisposableIncome = Math.max(1, average(state.consumers.map((consumer) => safeNumber(consumer.disposableIncomeTick, consumer.income || effectiveBaseWage() * 0.55))));
-      const employmentStability = clamp(1 - safeNumber(state.metrics.unemploymentRate, TARGET_UNEMPLOYMENT) / 100, 0.35, 1);
-      const creditEase = clamp(safeNumber(financial.creditSupplyIndex, 100) / 100, 0.35, 1.15);
-      const affordabilityRelief = clamp(1 / Math.max(0.55, safeNumber(realEstate.housingAffordability, 1)), 0.55, 1.25);
-      const rentSupport = clamp(safeNumber(realEstate.rentIndex, 100) / 100, 0.70, 1.90);
-      const housingFundamental = clamp(
-        100
-          * clamp(avgDisposableIncome / Math.max(1, effectiveBaseWage() * 0.65), 0.45, 1.75)
-          * affordabilityRelief
-          * clamp(0.72 + employmentStability * 0.32 + creditEase * 0.12 + rentSupport * 0.10 - Math.max(0, realEstate.mortgageRate - 0.055) * 2.4, 0.45, 1.65),
-        72,
-        240
-      );
-      const earningsProxy = Math.max(1, sum(state.producers.map((producer) => Math.max(0, safeNumber(producer.afterTaxProfit, producer.lastProfit)))));
-      const growthSupport = clamp(1 + safeNumber(state.perceived?.expectedEarningsGrowth, 0) * 2.8 + getGDPGrowthWindow() / 100 * 0.55, 0.50, 1.75);
-      const discountDrag = clamp(1 + Math.max(0, safeNumber(financial.bondYield, 0.04) - 0.03) * 7.5 + safeNumber(financial.creditSpread, 0.02) * 2.8 + safeNumber(asset.expectedRiskPremium, 0.04) * 1.6, 0.65, 2.4);
-      const stockFundamental = clamp((2550 + earningsProxy * 13.5 + Math.max(0, state.metrics.gdp) * 2.2) * growthSupport / Math.max(0.85, discountDrag * 0.82), 1900, 8200);
-      const housingMispricing = clamp(safeNumber(realEstate.residentialIndex, 100) / Math.max(1, housingFundamental) - 1, -0.55, 1.60);
-      const stockMispricing = clamp(safeNumber(asset.stockIndexPoints, 2500) / Math.max(1, stockFundamental) - 1, -0.65, 1.80);
-      const housingMomentum = getAverageHistoryChange("residentialIndex", 16, safeNumber(realEstate.residentialIndex, 100)) / 100;
-      const stockMomentum = getAverageHistoryChange("stockIndexPoints", 16, safeNumber(asset.stockIndexPoints, 2500)) / 2500;
-      const beliefBreakRisk = clamp(
-        Math.max(0, -housingMomentum) * 10
-          + safeNumber(state.metrics.negativeEquityRatio, 0) / 22
-          + safeNumber(financial.bankStress, 0) * 0.42
-          + Math.max(0, safeNumber(state.metrics.averageMortgageBurden, 0) - 10) / 24
-          + Math.max(0, getRecentUnemploymentTrend()) * 0.055
-          + safeNumber(realEstate.realEstateStress, 0.1) * 0.24,
-        0,
-        1
-      );
-      const realEstateBeliefTarget = clamp(
-        0.38
-          + Math.max(0, housingMomentum) * 7.0
-          + Math.max(0, TARGET_UNEMPLOYMENT - state.metrics.unemploymentRate) * 0.035
-          + Math.max(0, creditEase - 0.95) * 0.30
-          + safeNumber(realEstate.housingSupplyConstraint, 0.42) * 0.24
-          + safeNumber(info.rumorType === "housing" && info.rumorIntensity > 0 ? -info.rumorIntensity * 0.18 : 0, 0)
-          - beliefBreakRisk * 0.70
-          - Math.max(0, realEstate.housingAffordability - 1.75) * 0.10,
-        0,
-        1
-      );
-      const stockBeliefBreak = clamp(
-        safeNumber(asset.stockDrawdownFromPeak, 0) * 1.10
-          + Math.max(0, -safeNumber(state.metrics.averageFirmProfit, 0)) / 900
-          + Math.max(0, safeNumber(financial.creditSpread, 0.02) - 0.04) * 6
-          + safeNumber(financial.bankStress, 0) * 0.32
-          + Math.max(0, safeNumber(state.macroFinancial?.effectivePolicyRate, 0.03) - 0.06) * 4.2
-          + safeNumber(sentiment.recessionFear, 0.2) * 0.34,
-        0,
-        1
-      );
-      const stockBeliefTarget = clamp(
-        0.36
-          + Math.max(0, stockMomentum) * 8.2
-          + Math.max(0, 0.055 - safeNumber(state.macroFinancial?.effectivePolicyRate, 0.03)) * 4.0
-          + Math.max(0, safeNumber(financial.creditSupplyIndex, 100) - 95) * 0.006
-          + safeNumber(sentiment.businessConfidence, 0.8) * 0.16
-          + Math.max(0, safeNumber(asset.fearGreedIndex, 50) - 55) * 0.006
-          - stockBeliefBreak * 0.68,
-        0,
-        1
-      );
-      const narrativeTarget = clamp(
-        Math.max(realEstateBeliefTarget, stockBeliefTarget) * 0.48
-          + safeNumber(info.rumorIntensity, 0) * 0.18
-          + (1 - safeNumber(info.publicInformationQuality, 0.82)) * 0.24
-          + safeNumber(sentiment.assetBubblePsychology, 0.12) * 0.24,
-        0,
-        1
-      );
-      const fomoTarget = clamp(Math.max(0, housingMomentum) * 5.8 + Math.max(0, stockMomentum) * 7.0 + Math.max(0, 50 - state.metrics.unemploymentRate) * 0.003 + Math.max(0, asset.fearGreedIndex - 60) * 0.010 + Math.max(0, creditEase - 0.95) * 0.22, 0, 1);
-      const herdTarget = computeHerdBehavior(housingMomentum, stockMomentum);
-      const confirmationTarget = clamp(narrativeTarget * 0.48 + safeNumber(info.informationUncertainty, 0.16) * 0.24 + Math.max(realEstateBeliefTarget, stockBeliefTarget) * 0.28 + safeNumber(sentiment.recessionFear, 0.2) * 0.10, 0, 1);
-      const lossTarget = clamp(0.46 + safeNumber(asset.stockDrawdownFromPeak, 0) * 0.32 + Math.max(0, -housingMomentum) * 2.8 + safeNumber(state.metrics.negativeEquityRatio, 0) / 120 + safeNumber(info.misperceptionIndex, 0.12) * 0.15, 0.2, 1);
-      const dipTarget = clamp(stockBeliefTarget * 0.52 + safeNumber(sentiment.policyCredibility, 0.76) * 0.18 + Math.max(0, -safeNumber(asset.stockReturn, 0)) * 10 - stockBeliefBreak * 0.35, 0, 1);
-      const panicTarget = clamp(stockBeliefBreak * 0.46 + beliefBreakRisk * 0.30 + safeNumber(asset.stockVolatilityIndex, 18) / 100 * 0.20 + safeNumber(info.rumorIntensity, 0) * 0.16 + Math.max(0, -stockMomentum) * 4.5 - dipTarget * 0.18, 0, 1);
-      b.housingFundamentalValue = smoothValue(safeNumber(b.housingFundamentalValue, housingFundamental), housingFundamental, 0.10);
-      b.stockFundamentalValue = smoothValue(safeNumber(b.stockFundamentalValue, stockFundamental), stockFundamental, 0.10);
-      b.housingMispricing = smoothValue(safeNumber(b.housingMispricing, 0), housingMispricing, 0.10);
-      b.stockMispricing = smoothValue(safeNumber(b.stockMispricing, 0), stockMispricing, 0.10);
-      b.fundamentalPriceGap = clamp(Math.max(Math.abs(b.housingMispricing), Math.abs(b.stockMispricing)), 0, 2);
-      b.behavioralMispricingIndex = clamp(smoothValue(safeNumber(b.behavioralMispricingIndex, 0), Math.max(0, b.housingMispricing) * 0.34 + Math.max(0, b.stockMispricing) * 0.38 + confirmationTarget * 0.08, 0.10), 0, 1.5);
-      b.beliefBreakRisk = smoothValue(safeNumber(b.beliefBreakRisk, 0), Math.max(beliefBreakRisk, stockBeliefBreak), 0.12);
-      b.realEstateNeverFallsBelief = behavioralSmoothing(b.realEstateNeverFallsBelief, realEstateBeliefTarget);
-      b.stockMarketNeverFailsBelief = behavioralSmoothing(b.stockMarketNeverFailsBelief, stockBeliefTarget);
-      b.herdIntensity = behavioralSmoothing(b.herdIntensity, herdTarget);
-      b.fomoIntensity = behavioralSmoothing(b.fomoIntensity, fomoTarget);
-      b.lossAversion = behavioralSmoothing(b.lossAversion, lossTarget);
-      b.confirmationBias = behavioralSmoothing(b.confirmationBias, confirmationTarget);
-      b.overconfidence = behavioralSmoothing(b.overconfidence, clamp((b.realEstateNeverFallsBelief + b.stockMarketNeverFailsBelief) * 0.32 + b.fomoIntensity * 0.22 + Math.max(0, asset.fearGreedIndex - 55) * 0.006, 0, 1));
-      b.dipBuyingBelief = behavioralSmoothing(b.dipBuyingBelief, dipTarget);
-      b.panicSellingPressure = behavioralSmoothing(b.panicSellingPressure, panicTarget);
-      b.narrativeStrength = behavioralSmoothing(b.narrativeStrength, narrativeTarget);
-      b.speculativeDemandPressure = clamp(smoothValue(safeNumber(b.speculativeDemandPressure, 0.12), b.fomoIntensity * 0.28 + b.realEstateNeverFallsBelief * 0.24 + b.stockMarketNeverFailsBelief * 0.18 + Math.max(0, b.housingMispricing) * 0.12, 0.10), 0, 1);
-      b.beliefBreakdownMonths = b.beliefBreakRisk > 0.62 ? safeNumber(b.beliefBreakdownMonths, 0) + 1 / TICKS_PER_MONTH : Math.max(0, safeNumber(b.beliefBreakdownMonths, 0) - 0.15 / TICKS_PER_MONTH);
-      b.label = b.behavioralMispricingIndex > 0.85 || b.panicSellingPressure > 0.70 ? "위험" : b.behavioralMispricingIndex > 0.55 || b.fomoIntensity > 0.65 ? "과열" : b.herdIntensity > 0.42 ? "높음" : "보통";
-      syncBehaviorMetrics();
-    }
-
     function behavioralSmoothing(oldValue, targetValue) {
       const oldSafe = safeNumber(oldValue, targetValue);
       const targetSafe = clamp(safeNumber(targetValue, oldSafe), 0, 1.8);
@@ -3040,55 +2811,11 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
       return clamp(oldSafe * (1 - alpha) + targetSafe * alpha, 0, 1.8);
     }
 
-    function computeHerdBehavior(housingMomentum = 0, stockMomentum = 0) {
-      const info = state.information || createInitialInformationSystem();
-      const asset = state.assetMarket || createInitialAssetMarket();
-      const extremeFearGreed = Math.abs(safeNumber(asset.fearGreedIndex, 50) - 50) / 50;
-      const broadConsumptionCut = state.history.length > 8 && getTrendDelta("consumption", 8) < -12 ? 0.16 : 0;
-      const broadInvestmentCut = state.history.length > 8 && getTrendDelta("investment", 8) < -6 ? 0.14 : 0;
-      return clamp(
-        Math.abs(housingMomentum) * 5.0
-          + Math.abs(stockMomentum) * 6.4
-          + extremeFearGreed * 0.34
-          + safeNumber(info.rumorIntensity, 0) * 0.24
-          + (1 - safeNumber(info.publicInformationQuality, 0.82)) * 0.20
-          + broadConsumptionCut
-          + broadInvestmentCut,
-        0,
-        1
-      );
-    }
-
     function getAverageHistoryChange(key, windowSize = 12, fallback = 0) {
       if (!state.history.length) return 0;
       const current = safeNumber(state.history[state.history.length - 1]?.[key], fallback);
       const previous = safeNumber(state.history[Math.max(0, state.history.length - windowSize)]?.[key], current);
       return current - previous;
-    }
-
-    function syncBehaviorMetrics() {
-      if (!state.metrics || !state.behavior) return;
-      const b = state.behavior;
-      state.metrics.realEstateNeverFallsBelief = safeNumber(b.realEstateNeverFallsBelief, 0.46);
-      state.metrics.stockMarketNeverFailsBelief = safeNumber(b.stockMarketNeverFailsBelief, 0.46);
-      state.metrics.herdIntensity = safeNumber(b.herdIntensity, 0.18);
-      state.metrics.fomoIntensity = safeNumber(b.fomoIntensity, 0.12);
-      state.metrics.lossAversion = safeNumber(b.lossAversion, 0.55);
-      state.metrics.confirmationBias = safeNumber(b.confirmationBias, 0.35);
-      state.metrics.overconfidence = safeNumber(b.overconfidence, 0.22);
-      state.metrics.panicSellingPressure = safeNumber(b.panicSellingPressure, 0.05);
-      state.metrics.dipBuyingBelief = safeNumber(b.dipBuyingBelief, 0.32);
-      state.metrics.narrativeStrength = safeNumber(b.narrativeStrength, 0.28);
-      state.metrics.fundamentalPriceGap = safeNumber(b.fundamentalPriceGap, 0);
-      state.metrics.behavioralMispricingIndex = safeNumber(b.behavioralMispricingIndex, 0);
-      state.metrics.housingFundamentalValue = safeNumber(b.housingFundamentalValue, 100);
-      state.metrics.stockFundamentalValue = safeNumber(b.stockFundamentalValue, 2500);
-      state.metrics.housingMispricing = safeNumber(b.housingMispricing, 0) * 100;
-      state.metrics.stockMispricing = safeNumber(b.stockMispricing, 0) * 100;
-      state.metrics.beliefBreakRisk = safeNumber(b.beliefBreakRisk, 0);
-      state.metrics.beliefBreakdownMonths = safeNumber(b.beliefBreakdownMonths, 0);
-      state.metrics.speculativeDemandPressure = safeNumber(b.speculativeDemandPressure, 0.12);
-      state.metrics.behaviorLabel = b.label || "보통";
     }
 
     function updateExternalSector()  {
@@ -3171,198 +2898,6 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
       state.metrics.zombieFirmRatio = state.producers.filter((p) => p.zombieFirm).length / Math.max(1, state.producers.length) * 100;
     }
 
-    function computeInequalityMetrics() {
-      const incomes = state.consumers.map((c) => safeNumber(c.disposableIncomeTick, 0) + (c.employed ? 0 : safeNumber(c.cash, 0) * 0.01));
-      const wealth = state.consumers.map((c) => safeNumber(c.assetWealth, 0) + safeNumber(c.cash, 0));
-      state.metrics.incomeInequality = giniCoefficient(incomes);
-      state.metrics.wealthInequality = giniCoefficient(wealth);
-      const low = state.consumers.filter((c) => c.incomeSegment === "low");
-      const middle = state.consumers.filter((c) => c.incomeSegment === "middle");
-      const high = state.consumers.filter((c) => c.incomeSegment === "high");
-      const wealthy = state.consumers.filter((c) => c.incomeSegment === "wealthy");
-      state.metrics.lowIncomeConsumptionCapacity = average(low.map((c) => clamp((safeNumber(c.disposableIncomeTick, 0) + c.cash * 0.04) / Math.max(1, effectiveBaseWage() * 0.65), 0, 3)));
-      state.metrics.middleClassHousingBurden = average(middle.map((c) => safeNumber(c.mortgageBurden, 0) + safeNumber(c.rentBurden, 0))) * 100;
-      state.metrics.highIncomeWealthEffect = average(high.map((c) => safeNumber(c.wealthEffect, 0))) * 100;
-      state.metrics.wealthyAssetEffect = average(wealthy.map((c) => safeNumber(c.wealthEffect, 0))) * 100;
-      computeClassMetrics();
-    }
-
-    function computeClassMetrics() {
-      if (!state.classAnalysis) state.classAnalysis = createInitialClassAnalysis();
-      const analysis = state.classAnalysis;
-      const total = Math.max(1, state.consumers.length);
-      let strongest = { label: "없음", stress: -1 };
-      const confidenceValues = [];
-
-      householdClassOrder().forEach((item) => {
-        const members = state.consumers.filter((consumer) => consumer.incomeSegment === item.key);
-        const previous = analysis.classes[item.key] || createInitialClassAnalysis().classes[item.key];
-        const count = members.length;
-        const avgIncome = average(members.map((consumer) => safeNumber(consumer.disposableIncomeTick, consumer.income)));
-        const avgAssets = average(members.map((consumer) => safeNumber(consumer.assetWealth, 0) + safeNumber(consumer.cash, 0)));
-        const debtBurden = average(members.map((consumer) => safeNumber(consumer.debtBurden, 0))) * 100;
-        const housingBurden = average(members.map((consumer) => safeNumber(consumer.mortgageBurden, 0) + safeNumber(consumer.rentBurden, 0))) * 100;
-        const baseIncome = average(members.map((consumer) => safeNumber(consumer.baseIncomeLevel, 1))) || 1;
-        const consumptionCapacity = average(members.map((consumer) => clamp((safeNumber(consumer.disposableIncomeTick, 0) + safeNumber(consumer.cash, 0) * 0.035 + safeNumber(consumer.lastSpent, 0) * 0.25) / Math.max(1, effectiveBaseWage() * (item.key === "low" ? 0.55 : item.key === "middle" ? 0.82 : item.key === "high" ? 1.25 : 1.55)), 0, 3.5))) || 1;
-        const sentiment = computeClassSentiment(item.key, members, { avgIncome, avgAssets, debtBurden, housingBurden, consumptionCapacity, baseIncome });
-        const stress = computeClassStress(item.key, sentiment, { debtBurden, housingBurden, consumptionCapacity });
-        const mainPressure = computeClassMainPressure(item.key, sentiment, { debtBurden, housingBurden, consumptionCapacity });
-        const policyDemand = computeClassPolicyDemand(item.key, sentiment, { debtBurden, housingBurden, consumptionCapacity });
-        const confidence = smoothValue(safeNumber(previous.confidence, sentiment.confidence), sentiment.confidence, 0.16);
-        const profile = {
-          key: item.key,
-          label: item.label,
-          populationShare: count / total * 100,
-          averageIncome: smoothValue(safeNumber(previous.averageIncome, avgIncome), avgIncome, 0.20),
-          averageAssets: smoothValue(safeNumber(previous.averageAssets, avgAssets), avgAssets, 0.14),
-          debtBurden: smoothValue(safeNumber(previous.debtBurden, debtBurden), debtBurden, 0.18),
-          housingBurden: smoothValue(safeNumber(previous.housingBurden, housingBurden), housingBurden, 0.18),
-          consumptionCapacity: smoothValue(safeNumber(previous.consumptionCapacity, consumptionCapacity), consumptionCapacity, 0.18),
-          confidence,
-          status: classStatusLabel(confidence, stress),
-          mainPressure,
-          policyDemand,
-          stress: smoothValue(safeNumber(previous.stress, stress), stress, 0.18),
-          sentiment,
-          consumptionMultiplier: clamp(0.86 + confidence * 0.18 - stress * 0.08 + Math.max(0, consumptionCapacity - 1) * 0.025, 0.82, 1.08)
-        };
-        analysis.classes[item.key] = profile;
-        confidenceValues.push(confidence);
-        if (profile.stress > strongest.stress) strongest = { label: item.label, stress: profile.stress };
-        members.forEach((consumer) => {
-          consumer.className = item.label;
-          consumer.currentIncome = safeNumber(consumer.income, 0);
-          consumer.disposableIncome = safeNumber(consumer.disposableIncomeTick, 0);
-          consumer.assetWealth = safeNumber(consumer.assetWealth, safeNumber(consumer.stockHoldings, 0) + safeNumber(consumer.housingWealth, 0) - safeNumber(consumer.mortgageDebt, 0));
-          consumer.consumptionCapacity = profile.consumptionCapacity;
-          consumer.classConfidence = profile.confidence;
-          consumer.mainPressure = profile.mainPressure;
-          consumer.policyDemand = profile.policyDemand;
-        });
-      });
-
-      analysis.mainPressureClass = strongest.label;
-      analysis.sentimentGap = confidenceValues.length ? Math.max(...confidenceValues) - Math.min(...confidenceValues) : 0;
-      state.metrics.lowIncomeStress = safeNumber(analysis.classes.low?.stress, 0);
-      state.metrics.middleClassMortgageStress = safeNumber(analysis.classes.middle?.stress, 0);
-      state.metrics.highIncomeTaxStress = safeNumber(analysis.classes.high?.stress, 0);
-      state.metrics.wealthyAssetStress = safeNumber(analysis.classes.wealthy?.stress, 0);
-      state.metrics.renterStress = average(state.consumers.filter((consumer) => consumer.housingStatus === "renter").map((consumer) => safeNumber(consumer.rentBurden, 0))) * 100;
-      state.metrics.homeownerDebtStress = average(state.consumers.filter((consumer) => consumer.housingStatus !== "renter").map((consumer) => safeNumber(consumer.mortgageBurden, 0))) * 100;
-      state.metrics.classSentimentGap = analysis.sentimentGap;
-      state.metrics.mainPressureClass = analysis.mainPressureClass;
-    }
-
-    function computeClassSentiment(key, members, stats) {
-      const avgConfidence = average(members.map((consumer) => safeNumber(consumer.confidence, 0.82))) || 0.82;
-      const unemployment = state.metrics.unemploymentRate || TARGET_UNEMPLOYMENT;
-      const inflationPressure = Math.max(0, state.metrics.inflation - TARGET_INFLATION);
-      const importPressure = Math.max(0, safeNumber(state.metrics.importInflationPressure, 0) + safeNumber(state.metrics.commodityCostPressure, 0) * 0.5);
-      const transferSupport = clamp(safeNumber(state.government?.supportTick, 0) / Math.max(1, members.length * effectiveBaseWage()), 0, 0.35);
-      const assetReturnMood = clamp((safeNumber(state.metrics.stockMonthlyReturn, 0) + safeNumber(state.metrics.residentialReturn, 0) * 0.6 + safeNumber(state.metrics.wealthEffect, 0)) / 18, -0.45, 0.45);
-      const taxRate = safeNumber(state.policy?.taxEffective, state.config.householdIncomeTaxRate || 0.16);
-      const vatRate = safeNumber(state.government?.valueAddedTaxRate, state.policy?.vatEffective || state.config.valueAddedTaxRate || 0.10);
-      const consumptionTaxPain = clamp(vatRate / (key === "low" ? 0.22 : key === "middle" ? 0.28 : 0.36) + Math.max(0, state.metrics.inflation - TARGET_INFLATION) * (key === "low" ? 0.030 : 0.014), 0, 1);
-      const mortgagePressure = Math.max(0, safeNumber(state.metrics.mortgageRate, 0) - 5.5) / 12 + Math.max(0, safeNumber(state.metrics.housingAffordability, 1) - 1.25) * 0.24;
-      const jobSecurity = clamp(1 - unemployment / (key === "low" ? 24 : key === "middle" ? 30 : 42) - Math.max(0, getRecentUnemploymentTrend()) * (key === "low" ? 0.035 : 0.020), 0, 1);
-      const inflationAnxiety = clamp(inflationPressure / (key === "low" ? 5.5 : key === "middle" ? 7 : 11) + importPressure / (key === "low" ? 10 : 16) + consumptionTaxPain * (key === "low" ? 0.30 : key === "middle" ? 0.18 : 0.07), 0, 1);
-      const debtAnxiety = clamp(safeNumber(stats.debtBurden, 0) / (key === "middle" ? 22 : key === "low" ? 18 : 30), 0, 1);
-      const housingAnxiety = clamp(safeNumber(stats.housingBurden, 0) / (key === "middle" ? 18 : key === "low" ? 16 : 28) + mortgagePressure, 0, 1);
-      const assetMood = clamp(0.52 + assetReturnMood + (key === "wealthy" ? 0.10 : key === "high" ? 0.04 : -0.02), 0, 1.2);
-      const policySatisfaction = clamp(0.62 + transferSupport * (key === "low" ? 0.80 : 0.18) - taxRate * (key === "high" ? 0.85 : key === "wealthy" ? 0.75 : key === "middle" ? 0.38 : 0.20) - consumptionTaxPain * (key === "low" ? 0.24 : key === "middle" ? 0.14 : 0.05) - mortgagePressure * (key === "middle" ? 0.25 : 0.08) - Math.max(0, 0.45 - state.metrics.fiscalCredibility) * 0.10, 0, 1);
-      const confidence = clamp(
-        avgConfidence * 0.36
-          + jobSecurity * (key === "low" ? 0.18 : key === "middle" ? 0.22 : 0.13)
-          + assetMood * (key === "wealthy" ? 0.24 : key === "high" ? 0.18 : 0.05)
-          + policySatisfaction * 0.12
-          + clamp(stats.consumptionCapacity / 1.6, 0, 1) * (key === "low" ? 0.20 : 0.12)
-          - inflationAnxiety * (key === "low" ? 0.25 : 0.12)
-          - debtAnxiety * (key === "middle" ? 0.18 : 0.10)
-          - housingAnxiety * (key === "middle" ? 0.20 : key === "low" ? 0.12 : 0.05),
-        0,
-        1.2
-      );
-      return { confidence, inflationAnxiety, jobSecurity, debtAnxiety, housingAnxiety, assetMood, policySatisfaction, consumptionTaxPain };
-    }
-
-    function computeClassStress(key, sentiment, stats) {
-      if (key === "low") return clamp(sentiment.inflationAnxiety * 0.30 + safeNumber(sentiment.consumptionTaxPain, 0) * 0.14 + (1 - sentiment.jobSecurity) * 0.26 + Math.max(0, 1 - stats.consumptionCapacity) * 0.22 + sentiment.housingAnxiety * 0.08, 0, 1);
-      if (key === "middle") return clamp(sentiment.housingAnxiety * 0.36 + sentiment.debtAnxiety * 0.30 + (1 - sentiment.jobSecurity) * 0.20 + Math.max(0, 0.85 - stats.consumptionCapacity) * 0.14, 0, 1);
-      if (key === "high") return clamp(Math.max(0, safeNumber(state.policy?.taxEffective, 0.16) - 0.22) * 1.5 + Math.max(0, 0.55 - sentiment.assetMood) * 0.30 + Math.max(0, 0.55 - sentiment.policySatisfaction) * 0.25 + state.metrics.recessionFear * 0.15, 0, 1);
-      return clamp(Math.max(0, 0.58 - sentiment.assetMood) * 0.34 + Math.max(0, 0.58 - state.metrics.marketRiskSentiment) * 0.24 + Math.max(0, safeNumber(state.policy?.taxEffective, 0.16) - 0.24) * 1.0 + state.metrics.safeHavenDemand / 100 * 0.18, 0, 1);
-    }
-
-    function computeClassMainPressure(key, sentiment, stats) {
-      if (key === "low") {
-        if (sentiment.consumptionTaxPain > 0.55) return "부가세·체감물가";
-        if (sentiment.inflationAnxiety > 0.48) return "물가·생계비";
-        if (sentiment.housingAnxiety > 0.45) return "임대료";
-        if (sentiment.jobSecurity < 0.50) return "고용 불안";
-        return "소비여력";
-      }
-      if (key === "middle") {
-        if (sentiment.housingAnxiety > 0.45) return "주택담보금리";
-        if (sentiment.debtAnxiety > 0.45) return "부채상환";
-        if (sentiment.jobSecurity < 0.55) return "고용 안정";
-        return "가처분소득";
-      }
-      if (key === "high") {
-        if (sentiment.assetMood < 0.46) return "자산시장";
-        if (sentiment.policySatisfaction < 0.48) return "세후소득";
-        return "투자환경";
-      }
-      if (sentiment.assetMood < 0.46) return "자산가격";
-      if (state.metrics.safeHavenDemand > 45) return "금융시장 안정";
-      if (sentiment.policySatisfaction < 0.48) return "세제 예측";
-      return "자산시장";
-    }
-
-    function computeClassPolicyDemand(key, sentiment, stats) {
-      if (key === "low") {
-        if (sentiment.consumptionTaxPain > 0.55) return "체감물가 완화와 생계 지원 필요";
-        if (sentiment.inflationAnxiety > 0.48) return "물가 안정과 생계 지원 필요";
-        if (sentiment.housingAnxiety > 0.45) return "임대료 부담 완화 필요";
-        if (sentiment.jobSecurity < 0.50) return "고용 안정과 이전지출 확대 요구";
-        return "생활비 안정과 일자리 유지 요구";
-      }
-      if (key === "middle") {
-        if (sentiment.housingAnxiety > 0.45) return "주택담보 부담 완화 필요";
-        if (sentiment.debtAnxiety > 0.45) return "세금·대출 부담 완화 요구";
-        return "주거비와 가처분소득 안정 요구";
-      }
-      if (key === "high") {
-        if (sentiment.policySatisfaction < 0.48) return "세후소득 안정과 정책 예측 가능성 요구";
-        if (sentiment.assetMood < 0.48) return "자산시장 안정과 투자환경 개선 요구";
-        return "투자환경과 정책 예측 가능성 요구";
-      }
-      if (sentiment.assetMood < 0.48 || state.metrics.safeHavenDemand > 45) return "금융시장 안정과 신뢰 회복 요구";
-      return "자산시장 안정과 세제 예측 가능성 요구";
-    }
-
-    function computeSocialStress() {
-      const socialStress = clamp(
-        state.metrics.unemploymentRate / 40
-          + Math.max(0, state.metrics.inflation - TARGET_INFLATION) / 12
-          + Math.max(0, state.metrics.housingAffordability - 1.3) * 0.18
-          + state.metrics.incomeInequality * 0.22
-          + state.metrics.wealthInequality * 0.18
-          + Math.max(0, 0.65 - state.metrics.consumerSentiment) * 0.34
-          + Math.max(0, 1 - state.metrics.lowIncomeConsumptionCapacity) * 0.18,
-        0,
-        1
-      );
-      const classStress = clamp(
-        safeNumber(state.metrics.lowIncomeStress, 0) * 0.30
-          + safeNumber(state.metrics.middleClassMortgageStress, 0) * 0.24
-          + safeNumber(state.metrics.renterStress, 0) / 100 * 0.18
-          + safeNumber(state.metrics.homeownerDebtStress, 0) / 100 * 0.14
-          + safeNumber(state.metrics.classSentimentGap, 0) * 0.12,
-        0,
-        1
-      );
-      state.metrics.socialStressIndex = smoothValue(safeNumber(state.metrics.socialStressIndex, socialStress), clamp(socialStress * 0.72 + classStress * 0.28, 0, 1), 0.12);
-    }
-
     function computeMarketOutcome() {
       return computeMarketOutcomeAnalysis(state);
     }
@@ -3381,107 +2916,6 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
 
     function earlyWarningReasonLabel(label) {
       return earlyWarningReasonLabelAnalysis(label, state.metrics || {}, { formatSigned, percent, signedPercent });
-    }
-
-    function updateVulnerabilitySystem() {
-      if (!state.vulnerabilities) state.vulnerabilities = createInitialVulnerabilityState();
-      const v = state.vulnerabilities;
-      const m = state.metrics;
-      const positiveStockGap = Math.max(0, safeNumber(m.stockMispricing, 0)) / 100;
-      const positiveHousingGap = Math.max(0, safeNumber(m.housingMispricing, 0)) / 100;
-      const creditTightness = clamp((100 - safeNumber(m.creditSupplyIndex, 100)) / 70, 0, 1);
-      const collateralStress = clamp((100 - safeNumber(m.collateralValueIndex, 100)) / 60, 0, 1);
-      const fiscalInterestBurden = clamp(safeNumber(m.governmentDebtService, 0) / Math.max(1, safeNumber(m.totalTaxCollected, 1)) / 1.8, 0, 1);
-
-      // 취약성은 즉시 위기가 아니라, 충격이 왔을 때 더 크게 흔들릴 수 있는 누적 압력이다.
-      const targets = {
-        householdVulnerability: clamp(
-          safeNumber(m.averageHouseholdDebtBurden, 0) / 34 * 0.28
-            + safeNumber(m.middleClassMortgageStress, 0) * 0.24
-            + safeNumber(m.lowIncomeStress, 0) * 0.20
-            + safeNumber(m.negativeEquityRatio, 0) / 45 * 0.14
-            + Math.max(0, 0.58 - safeNumber(m.consumerSentiment, 0.8)) * 0.30,
-          0,
-          1
-        ),
-        firmVulnerability: clamp(
-          Math.max(0, 1.7 - safeNumber(m.averageFirmDSCR, 2.5)) / 1.7 * 0.28
-            + safeNumber(m.distressedFirmRatio, 0) / 55 * 0.22
-            + safeNumber(m.zombieFirmRatio, 0) / 40 * 0.20
-            + safeNumber(m.debtStressedFirmRatio, 0) / 100 * 0.16
-            + Math.max(0, 0.58 - safeNumber(m.businessSentiment, 0.8)) * 0.20,
-          0,
-          1
-        ),
-        bankVulnerability: clamp(
-          safeNumber(m.bankStress, 0) * 0.30
-            + (100 - safeNumber(m.bankHealthIndex, 100)) / 100 * 0.24
-            + creditTightness * 0.18
-            + collateralStress * 0.14
-            + safeNumber(m.nonPerformingLoanRatio, 0) / 16 * 0.14,
-          0,
-          1
-        ),
-        housingVulnerability: clamp(
-          Math.max(0, safeNumber(m.housingAffordability, 1) - 1.2) * 0.24
-            + positiveHousingGap * 0.35
-            + safeNumber(m.averageMortgageBurden, 0) / 30 * 0.18
-            + Math.max(0, safeNumber(m.mortgageRate, 0) - 5.2) / 9 * 0.12
-            + safeNumber(m.realEstateNeverFallsBelief, 0.46) * safeNumber(m.fomoIntensity, 0.12) * 0.18,
-          0,
-          1
-        ),
-        stockVulnerability: clamp(
-          positiveStockGap * 0.34
-            + safeNumber(m.stockValuationPressure, 0) * 0.24
-            + Math.abs(safeNumber(m.fearGreedIndex, 50) - 50) / 50 * 0.16
-            + safeNumber(m.stockVolatilityIndex, 18) / 70 * 0.14
-            + safeNumber(m.stockMarketNeverFailsBelief, 0.46) * safeNumber(m.fomoIntensity, 0.12) * 0.16,
-          0,
-          1
-        ),
-        fiscalVulnerability: clamp(
-          Math.max(0, safeNumber(m.debtToGdpRatio, 0) - 0.65) * 0.34
-            + fiscalInterestBurden * 0.26
-            + Math.max(0, 0.55 - safeNumber(m.fiscalCredibility, 0.78)) * 0.40
-            + Math.max(0, safeNumber(m.bondYield10Y, 0) - 5) / 12 * 0.16,
-          0,
-          1
-        ),
-        externalVulnerability: clamp(
-          Math.abs(safeNumber(m.exchangeRateIndex, 100) - 100) / 65 * 0.24
-            + safeNumber(m.importInflationPressure, 0) / 4.5 * 0.24
-            + safeNumber(m.commodityCostPressure, 0) / 5.5 * 0.24
-            + safeNumber(m.externalShockPressure, 0) * 0.18
-            + Math.max(0, 0.52 - safeNumber(m.foreignInvestorSentiment, 0.72)) * 0.22,
-          0,
-          1
-        )
-      };
-
-      Object.keys(targets).forEach((key) => {
-        const oldValue = safeNumber(v[key], 0.15);
-        const target = targets[key];
-        v[key] = clamp(smoothValue(oldValue, target, target > oldValue ? 0.12 : 0.06), 0, 1);
-        m[key] = v[key];
-      });
-
-      const entries = [
-        ["가계", v.householdVulnerability],
-        ["기업", v.firmVulnerability],
-        ["은행", v.bankVulnerability],
-        ["주택", v.housingVulnerability],
-        ["주식", v.stockVulnerability],
-        ["재정", v.fiscalVulnerability],
-        ["대외", v.externalVulnerability]
-      ];
-      const dominant = entries.reduce((max, item) => item[1] > max[1] ? item : max, entries[0]);
-      v.hiddenVulnerabilityIndex = clamp(smoothValue(safeNumber(v.hiddenVulnerabilityIndex, 0.15), average(entries.map((item) => item[1])) * 0.62 + dominant[1] * 0.38, 0.10), 0, 1);
-      v.dominant = dominant[0];
-      v.label = v.hiddenVulnerabilityIndex > 0.70 ? "위험" : v.hiddenVulnerabilityIndex > 0.52 ? "높음" : v.hiddenVulnerabilityIndex > 0.32 ? "주의" : "낮음";
-      m.hiddenVulnerabilityIndex = v.hiddenVulnerabilityIndex;
-      m.vulnerabilityLabel = v.label;
-      m.dominantVulnerability = v.dominant;
     }
 
     function syncExternalMetrics()  {
@@ -5447,415 +4881,43 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
     }
 
     // ===== 차트 =====
-    // Chart.js는 CDN으로 불러오며, 최근 MAX_HISTORY개의 틱만 유지한다.
-    function setupCharts() {
-      if (!window.Chart) {
-        if (!state.ui) state.ui = createInitialUiState();
-        state.ui.chartsAvailable = false;
-        state.charts = {};
-        showChartFallback("Chart.js를 불러오지 못해 차트가 비활성화되었습니다.");
-        pushEvent("Chart.js를 불러오지 못해 차트 없이 시뮬레이션을 실행합니다.");
-        return;
-      }
-      state.ui.chartsAvailable = true;
-      registerEventMarkerPlugin();
-      const baseOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: { duration: 180, easing: "easeOutQuart" },
-        interaction: { mode: "index", intersect: false },
-        plugins: {
-          legend: {
-            labels: {
-              color: "#16302e",
-              boxWidth: 10,
-              usePointStyle: true,
-              font: { size: 11, weight: "700" }
-            }
-          },
-          tooltip: {
-            backgroundColor: "rgba(22, 48, 46, 0.92)",
-            padding: 10,
-            displayColors: true,
-            callbacks: {
-              label(context) {
-                const label = context.dataset.label || "";
-                const value = Number(context.parsed.y || 0);
-                const isPercent = label.includes("%") || label.includes("금리") || label.includes("실업") || label.includes("물가");
-                const formatted = label.includes("(pt)") ? formatIndexPoint(value) : isPercent ? `${value.toFixed(2)}%` : compactMoney(value);
-                return `${label}: ${formatted}`;
-              }
-            }
-          }
-        },
-        scales: {
-          x: {
-            ticks: { color: "#63706b", maxTicksLimit: 8 },
-            grid: { color: "rgba(22, 48, 46, 0.045)" }
-          },
-          y: {
-            ticks: { color: "#63706b" },
-            grid: { color: "rgba(22, 48, 46, 0.065)" },
-            beginAtZero: true
-          },
-          y1: {
-            position: "right",
-            ticks: { color: "#c8483f" },
-            grid: { drawOnChartArea: false },
-            beginAtZero: true
-          }
-        }
-      };
-
-      state.charts.gdp = new Chart(document.getElementById("gdpChart"), {
-        type: "line",
-        data: {
-          labels: [],
-          datasets: [
-            makeDataset("GDP형 지출", "#247173"),
-            makeDataset("생산가치", "#d88931"),
-            makeDataset("정부지출(G)", "#6bb58e")
-          ]
-        },
-        options: cloneOptions(baseOptions, "GDP와 생산")
-      });
-
-      state.charts.demand = new Chart(document.getElementById("demandChart"), {
-        type: "line",
-        data: {
-          labels: [],
-          datasets: [
-            makeDataset("소비", "#407ca8"),
-            makeDataset("투자", "#c85f32"),
-            makeDataset("정책 금리 %", "#c8483f", "y1", [6, 4])
-          ]
-        },
-        options: cloneOptions(baseOptions, "소비와 투자")
-      });
-
-      state.charts.unemployment = new Chart(document.getElementById("unemploymentChart"), {
-        type: "line",
-        data: {
-          labels: [],
-          datasets: [
-            makeDataset("실업률 %", "#c8483f"),
-            makeDataset("정책 금리 %", "#247173", "y1", [6, 4])
-          ]
-        },
-        options: cloneOptions(baseOptions, "실업률")
-      });
-
-      state.charts.price = new Chart(document.getElementById("priceChart"), {
-        type: "line",
-        data: {
-          labels: [],
-          datasets: [
-            makeDataset("평균 가격", "#247173"),
-            makeDataset("물가상승률 %", "#d88931"),
-            makeDataset("평균 임금", "#407ca8"),
-            makeDataset("임금상승률 %", "#c8483f", "y1", [4, 3])
-          ]
-        },
-        options: cloneOptions(baseOptions, "가격과 물가")
-      });
-
-      state.charts.government = new Chart(document.getElementById("governmentChart"), {
-        type: "line",
-        data: {
-          labels: [],
-          datasets: [
-            makeDataset("재정수지", "#247173"),
-            makeDataset("세금 수입", "#407ca8"),
-            makeDataset("정부 지출", "#c85f32"),
-            makeDataset("평균 기업이윤", "#d88931"),
-            makeDataset("가계부채", "#6bb58e", "y1", [5, 3]),
-            makeDataset("기업부채", "#8b6f47", "y1", [2, 3])
-          ]
-        },
-        options: cloneOptions(baseOptions, "정부 재정")
-      });
-
-      state.charts.asset = new Chart(document.getElementById("assetChart"), {
-        type: "line",
-        data: {
-          labels: [],
-          datasets: [
-            makeDataset("주가지수(pt)", "#247173"),
-            makeDataset("주거용 부동산", "#d88931"),
-            makeDataset("상업용 부동산", "#407ca8")
-          ]
-        },
-        options: cloneOptions(baseOptions, "자산시장")
-      });
-
-      state.charts.firmStock = new Chart(document.getElementById("firmStockChart"), {
-        type: "line",
-        data: {
-          labels: [],
-          datasets: [
-            makeDataset("평균 기업 주가", "#247173"),
-            makeDataset("기업 주가 변동성 %", "#c85f32", "y1")
-          ]
-        },
-        options: cloneOptions(baseOptions, "기업 주식")
-      });
-
-      state.charts.financial = new Chart(document.getElementById("financialChart"), {
-        type: "line",
-        data: {
-          labels: [],
-          datasets: [
-            makeDataset("국채금리 %", "#247173"),
-            makeDataset("신용스프레드 %p", "#c85f32"),
-            makeDataset("은행건전성지수", "#407ca8", "y1")
-          ]
-        },
-        options: cloneOptions(baseOptions, "금융시장")
-      });
-
-      state.charts.safeAsset = new Chart(document.getElementById("safeAssetChart"), {
-        type: "line",
-        data: {
-          labels: [],
-          datasets: [
-            makeDataset("금 가격지수", "#d88931"),
-            makeDataset("은 가격지수", "#8b6f47")
-          ]
-        },
-        options: cloneOptions(baseOptions, "안전자산")
-      });
-
-      state.charts.sentiment = new Chart(document.getElementById("sentimentChart"), {
-        type: "line",
-        data: {
-          labels: [],
-          datasets: [
-            makeDataset("소비심리", "#247173"),
-            makeDataset("기업심리", "#407ca8"),
-            makeDataset("침체우려", "#c85f32")
-          ]
-        },
-        options: cloneOptions(baseOptions, "심리 및 기대")
-      });
-
-      state.charts.model = new Chart(document.getElementById("modelChart"), {
-        type: "line",
-        data: {
-          labels: [],
-          datasets: [
-            makeDataset("모형 결과", "#247173"),
-            makeDataset("기준선", "#d88931", "y", [5, 4])
-          ]
-        },
-        options: cloneOptions(baseOptions, "모형 결과")
-      });
-
-    }
-
-    function showChartFallback(message) {
-      document.querySelectorAll(".chart-box canvas, .model-chart-box canvas").forEach((canvas) => {
-        const box = canvas.closest(".chart-box, .model-chart-box");
-        if (!box || box.querySelector(".chart-fallback")) return;
-        canvas.style.display = "none";
-        const fallback = document.createElement("div");
-        fallback.className = "chart-fallback";
-        fallback.textContent = message;
-        box.appendChild(fallback);
-      });
-    }
-
-    function registerEventMarkerPlugin() {
-      if (!window.Chart) return;
-      if (window.__agentMacroEventMarkersRegistered) return;
-      window.__agentMacroEventMarkersRegistered = true;
-      Chart.register({
-        id: "eventMarkers",
-        afterDatasetsDraw(chart) {
-          const active = chart.tooltip && chart.tooltip.getActiveElements ? chart.tooltip.getActiveElements() : [];
-          if (!active.length) return;
-          const area = chart.chartArea;
-          const x = active[0].element.x;
-          const ctx = chart.ctx;
-          ctx.save();
-          ctx.strokeStyle = "rgba(22, 48, 46, 0.24)";
-          ctx.lineWidth = 1;
-          ctx.setLineDash([3, 4]);
-          ctx.beginPath();
-          ctx.moveTo(x, area.top);
-          ctx.lineTo(x, area.bottom);
-          ctx.stroke();
-          ctx.restore();
-        },
-        afterDraw(chart) {
-          if (!state.markers.length || !chart.data.labels.length) return;
-          const xScale = chart.scales.x;
-          const area = chart.chartArea;
-          const visibleTicks = chart.data.labels.map(Number);
-          const ctx = chart.ctx;
-
-          state.markers.forEach((marker) => {
-            const index = visibleTicks.indexOf(marker.tick);
-            if (index < 0) return;
-            const x = xScale.getPixelForValue(index);
-            ctx.save();
-            ctx.strokeStyle = marker.label === "충격" ? "rgba(200, 72, 63, 0.55)" : "rgba(36, 113, 115, 0.48)";
-            ctx.lineWidth = 1.2;
-            ctx.setLineDash([4, 4]);
-            ctx.beginPath();
-            ctx.moveTo(x, area.top);
-            ctx.lineTo(x, area.bottom);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ctx.fillStyle = ctx.strokeStyle;
-            ctx.font = "700 10px sans-serif";
-            ctx.fillText(marker.label, x + 4, area.top + 12);
-            ctx.restore();
-          });
-        }
-      });
-    }
-
-    function makeDataset(label, color, yAxisID = "y", dash = []) {
+    function createChartContext() {
       return {
-        label,
-        data: [],
-        borderColor: color,
-        backgroundColor: color + "22",
-        borderWidth: 2.2,
-        yAxisID,
-        borderDash: dash,
-        pointRadius: 0,
-        pointHoverRadius: 3,
-        tension: 0.32,
-        fill: false
+        state,
+        els,
+        documentRef: document,
+        windowRef: window,
+        helpers: {
+          compactMoney,
+          createInitialUiState,
+          formatIndexPoint,
+          isChartAvailable,
+          isLargeEconomyMode,
+          round,
+          safeNumber,
+          shouldUpdateChartData,
+          syncUiPerformanceState
+        },
+        callbacks: {
+          pushEvent
+        }
       };
     }
 
-    function cloneOptions(baseOptions, title) {
-      const options = JSON.parse(JSON.stringify(baseOptions));
-      options.plugins.tooltip.callbacks = baseOptions.plugins.tooltip.callbacks;
-      options.plugins.title = {
-        display: true,
-        text: title,
-        color: "#16302e",
-        align: "start",
-        font: { size: 13, weight: "800" }
-      };
-      return options;
+    function setupCharts() {
+      setupChartsPanel(createChartContext());
     }
 
     function setupChartDatasetToggles() {
-      if (!isChartAvailable()) return;
-      Object.values(state.charts).forEach((chart) => {
-        const canvas = chart.canvas;
-        const box = canvas && canvas.parentElement;
-        if (!box || box.querySelector(".chart-toggles")) return;
-        const toolbar = document.createElement("div");
-        toolbar.className = "chart-toggles";
-        chart.data.datasets.forEach((dataset, index) => {
-          const button = document.createElement("button");
-          button.type = "button";
-          button.className = "chart-toggle";
-          button.textContent = dataset.label;
-          button.style.borderColor = dataset.borderColor;
-          button.addEventListener("click", () => {
-            const currentlyVisible = chart.isDatasetVisible(index);
-            chart.setDatasetVisibility(index, !currentlyVisible);
-            button.classList.toggle("off", currentlyVisible);
-            chart.update();
-          });
-          toolbar.appendChild(button);
-        });
-        box.insertBefore(toolbar, canvas);
-      });
+      setupChartDatasetTogglesPanel(createChartContext());
     }
 
     function clearCharts() {
-      if (!isChartAvailable()) return;
-      Object.values(state.charts).forEach((chart) => {
-        if (!chart || !chart.data) return;
-        chart.data.labels = [];
-        chart.data.datasets.forEach((dataset) => {
-          dataset.data = [];
-        });
-        chart.update("none");
-      });
+      clearChartsPanel(createChartContext());
     }
 
     function updateCharts(force = false) {
-      if (!isChartAvailable()) return;
-      syncUiPerformanceState();
-      const interval = isLargeEconomyMode() ? 24 : state.config.performanceMode === "light" ? 10 : 4;
-      if (!force && state.tick > 0 && state.tick % interval !== 0 && state.history.length > 2) return;
-      if (state.ui) state.ui.lastChartUpdateTick = state.tick;
-      const labels = state.history.map((row) => row.tick);
-      updateChartFromHistory(state.charts.gdp, labels, [
-        (row) => round(row.gdp, 1),
-        (row) => round(row.outputValue, 1),
-        (row) => round(row.governmentGDPSpending, 1)
-      ]);
-      updateChartFromHistory(state.charts.demand, labels, [
-        (row) => round(row.consumption, 1),
-        (row) => round(row.investment, 1),
-        (row) => round(row.interestRatePercent, 2)
-      ]);
-      updateChartFromHistory(state.charts.unemployment, labels, [
-        (row) => round(row.unemploymentRate, 2),
-        (row) => round(row.interestRatePercent, 2)
-      ]);
-      updateChartFromHistory(state.charts.price, labels, [
-        (row) => round(row.averagePrice, 2),
-        (row) => round(row.inflation, 2),
-        (row) => round(row.averageWage, 2),
-        (row) => round(row.wageGrowth, 2)
-      ]);
-      updateChartFromHistory(state.charts.government, labels, [
-        (row) => round(row.governmentBalance, 1),
-        (row) => round(row.taxCollected, 1),
-        (row) => round(row.spendingActual, 1),
-        (row) => round(row.averageFirmProfit, 1),
-        (row) => round(row.householdDebt, 1),
-        (row) => round(row.firmDebt, 1)
-      ]);
-      updateChartFromHistory(state.charts.asset, labels, [
-        (row) => round(row.stockIndexPoints || row.stockIndex * 25, 0),
-        (row) => round(safeNumber(row.residentialIndex, row.housingIndex), 1),
-        (row) => round(safeNumber(row.commercialIndex, 100), 1)
-      ]);
-      updateChartFromHistory(state.charts.firmStock, labels, [
-        (row) => round(safeNumber(row.averageFirmStockPrice, 100), 1),
-        (row) => round(safeNumber(row.firmStockVolatility, 0), 2)
-      ]);
-      updateChartFromHistory(state.charts.financial, labels, [
-        (row) => round(row.bondYield, 2),
-        (row) => round(row.creditSpread, 2),
-        (row) => round(row.bankHealthIndex, 1)
-      ]);
-      updateChartFromHistory(state.charts.safeAsset, labels, [
-        (row) => round(row.goldIndex, 1),
-        (row) => round(row.silverIndex, 1)
-      ]);
-      updateChartFromHistory(state.charts.sentiment, labels, [
-        (row) => round(safeNumber(row.consumerSentiment, 0.8), 2),
-        (row) => round(safeNumber(row.businessSentiment, 0.8), 2),
-        (row) => round(safeNumber(row.recessionFear, 0.2), 2)
-      ]);
-    }
-
-    function updateChartFromHistory(chart, labels, accessors) {
-      if (!shouldUpdateChartData(chart)) return;
-      updateChart(chart, labels, accessors.map((accessor) => state.history.map(accessor)));
-    }
-
-    function updateChart(chart, labels, dataSeries) {
-      if (!shouldUpdateChartData(chart)) return;
-      const canvas = chart.canvas;
-      if (!canvas) return;
-      chart.data.labels = labels;
-      dataSeries.forEach((series, index) => {
-        chart.data.datasets[index].data = series;
-      });
-      chart.update("none");
+      updateChartsPanel(createChartContext(), force);
     }
 
     // ===== 경제 모형 분석실 =====
@@ -6547,54 +5609,6 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
       return "정보 격차는 관리 가능한 범위이며, 심리는 실제 지표를 점진적으로 따라가고 있습니다.";
     }
 
-    function intensityLabel(value) {
-      const v = safeNumber(value, 0);
-      if (v < 0.25) return "낮음";
-      if (v < 0.50) return "주의";
-      if (v < 0.75) return "불안";
-      return "공포";
-    }
-
-    function behavioralLabel(value) {
-      const v = safeNumber(value, 0);
-      if (v < 0.25) return "낮음";
-      if (v < 0.52) return "보통";
-      if (v < 0.72) return "높음";
-      if (v < 0.92) return "과열";
-      return "위험";
-    }
-
-    function classStatusLabel(confidence, stress = 0) {
-      const c = safeNumber(confidence, 0.75);
-      const s = safeNumber(stress, 0);
-      if (s > 0.72 || c < 0.34) return "위험";
-      if (s > 0.52 || c < 0.52) return "약함";
-      if (c > 0.78 && s < 0.34) return "좋음";
-      return "보통";
-    }
-
-    function accuracyLabel(value) {
-      const v = safeNumber(value, 0.75);
-      if (v >= 0.78) return "강함";
-      if (v >= 0.58) return "보통";
-      if (v >= 0.38) return "약함";
-      return "위험";
-    }
-
-    function perceptionGapLabel(perceivedValue, actualValue) {
-      const gap = Math.abs(safeNumber(perceivedValue, actualValue) - safeNumber(actualValue, perceivedValue));
-      if (gap < 0.10) return "보통";
-      if (gap < 0.28) return "주의";
-      return "불안";
-    }
-
-    function expectationMoodLabel(value) {
-      const v = safeNumber(value, 0);
-      if (v > 2.5) return "낙관";
-      if (v < -2.5) return "비관";
-      return "중립";
-    }
-
     function updateTransmissionMap() {
       if (!els.transmissionMapValue) return;
       const chain = getDominantTransmissionChain();
@@ -7208,284 +6222,219 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
       return !healthyCashFlow && (producer.financiallyStressed || (producer.debtStress || 0) > 0.55 || (producer.stressMemory || 0) > 0.55 || debtServicePressure > 0.10) && (weakProfit || cashTight || leveraged);
     }
 
-    function runBalanceQuickTest() {
-      const snapshot = captureSimulationSnapshot();
-      const coreSignature = captureCoreStateSignature();
-      const previousSuppressVisualUpdates = state.debug.suppressVisualUpdates;
-      const samples = [];
-      clearLazyResultCache();
-      state.running = false;
-      state.game.activeEvent = null;
-      state.game.nextEventTick = state.tick + TICKS_PER_MONTH * 120 + 9999;
-      state.debug.suppressVisualUpdates = true;
-      updateRunState();
-      els.balanceQuickTestBtn.disabled = true;
-      els.balanceQuickTestBtn.textContent = "테스트 실행 중...";
-
-      try {
-        for (let i = 0; i < TICKS_PER_MONTH * 120; i += 1) {
-          runSimulationStep();
-          if (state.tick % TICKS_PER_MONTH === 0) {
-            samples.push(getBalanceDiagnosticSnapshot());
-          }
-        }
-        safeRenderBalanceQuickTestResult(samples);
-      } catch (error) {
-        recordRuntimeError(error, "테스트 오류", "빠른 테스트 중 오류가 감지되었습니다.", { silentToast: true });
-        state.running = false;
-        repairSimulationState();
-        els.balanceTestResult.classList.add("visible");
-        els.balanceTestResult.innerHTML = "<strong>테스트 오류</strong><br>빠른 테스트 중 오류가 감지되어 중단했습니다.";
-        showToast("테스트 오류", "빠른 테스트 중 오류가 감지되었습니다.");
-      } finally {
-        restoreSimulationSnapshot(snapshot);
-        state.debug.suppressVisualUpdates = previousSuppressVisualUpdates;
-        warnIfStateRestoreFailed("120개월 빠른 테스트", coreSignature, els.balanceTestResult);
-        els.balanceQuickTestBtn.disabled = false;
-        els.balanceQuickTestBtn.textContent = "120개월 빠른 테스트";
-        safeUpdateAllDisplays();
-        safeUpdateCharts(true);
-        safeRenderSimulation(performance.now());
-        updateRunState();
-      }
-    }
-
-    async function runScenarioValidation() {
-      const scenarioKeys = [
-        "stableGrowth", "highRateTightening", "housingOverheat", "stockOverheat", "commodityShock", "financialStress", "lowRateLongRun", "stagflation",
-        "creditExcessFailure", "supplyBottleneckFailure", "productivityExpansion", "foreignDemandBoom", "foreignCapitalOutflow", "agricultureShock", "energyPriceShock",
-        "koreaImf1997", "usFinancialCrisis2007", "japanBubbleEconomy", "germanyReunification", "turkiyeInflation2018"
-      ];
-      const snapshot = captureSimulationSnapshot();
-      const coreSignature = captureCoreStateSignature();
-      const previousSuppressVisualUpdates = state.debug.suppressVisualUpdates;
-      const previousRunning = state.running;
-      const results = [];
-      clearLazyResultCache();
-      state.running = false;
-      state.debug.suppressVisualUpdates = true;
-      els.scenarioValidationBtn.disabled = true;
-      els.scenarioValidationBtn.textContent = "검증 중...";
-      els.scenarioValidationResult.classList.add("visible");
-      els.scenarioValidationResult.innerHTML = `<strong>시나리오 검증</strong><br>0 / ${scenarioKeys.length} 실행 중...`;
-      updateRunState();
-
-      try {
-        for (let index = 0; index < scenarioKeys.length; index += 1) {
-          const key = scenarioKeys[index];
-          prepareCalibrationScenario(key);
-          const samples = [];
-          for (let tick = 0; tick < TICKS_PER_MONTH * 120; tick += 1) {
-            runSimulationStep();
-            if (state.tick % TICKS_PER_MONTH === 0) samples.push(getBalanceDiagnosticSnapshot());
-          }
-          results.push(summarizeScenarioValidation(key, samples));
-          els.scenarioValidationResult.innerHTML = `<strong>시나리오 검증</strong><br>${index + 1} / ${scenarioKeys.length} 실행 중...`;
-          await waitForUiTurn();
-        }
-        renderScenarioValidationResults(results);
-      } catch (error) {
-        recordRuntimeError(error, "검증 오류", "시나리오 검증 중 오류가 감지되었습니다.", { silentToast: true });
-        els.scenarioValidationResult.innerHTML = "<strong>검증 오류</strong><br>시나리오 검증 중 오류가 감지되어 중단했습니다.";
-        showToast("검증 오류", "시나리오 검증 중 오류가 감지되었습니다.");
-      } finally {
-        restoreSimulationSnapshot(snapshot);
-        state.debug.suppressVisualUpdates = previousSuppressVisualUpdates;
-        state.running = previousRunning;
-        warnIfStateRestoreFailed("시나리오 검증", coreSignature, els.scenarioValidationResult);
-        els.scenarioValidationBtn.disabled = false;
-        els.scenarioValidationBtn.textContent = "시나리오 검증";
-        safeUpdateAllDisplays();
-        safeUpdateCharts(true);
-        safeRenderSimulation(performance.now());
-        updateRunState();
-      }
-    }
-
-    async function runPolicyComparison() {
-      const snapshot = captureSimulationSnapshot();
-      const coreSignature = captureCoreStateSignature();
-      const previousSuppressVisualUpdates = state.debug.suppressVisualUpdates;
-      const previousRunning = state.running;
-      const horizonMonths = clamp(Number(els.policyComparisonHorizon?.value || 60), 24, 120);
-      const variants = getPolicyComparisonVariants();
-      const results = [];
-      clearLazyResultCache();
-      state.running = false;
-      state.debug.suppressVisualUpdates = true;
-      if (els.policyComparisonBtn) {
-        els.policyComparisonBtn.disabled = true;
-        els.policyComparisonBtn.textContent = "비교 실행 중...";
-      }
-      if (els.policyComparisonResult) {
-        els.policyComparisonResult.classList.add("visible");
-        els.policyComparisonResult.innerHTML = `<strong>정책 비교</strong><br>0 / ${variants.length} 실행 중...`;
-      }
-      updateRunState();
-
-      try {
-        for (let index = 0; index < variants.length; index += 1) {
-          const variant = variants[index];
-          restoreSimulationSnapshot(snapshot);
-          state.running = false;
-          state.debug.suppressVisualUpdates = true;
-          state.game.activeEvent = null;
-          state.game.nextEventTick = state.tick + TICKS_PER_MONTH * horizonMonths + 9999;
-          applyPolicyComparisonVariant(variant);
-          const samples = [];
-          for (let tick = 0; tick < TICKS_PER_MONTH * horizonMonths; tick += 1) {
-            runSimulationStep();
-            if (state.tick % TICKS_PER_MONTH === 0) samples.push(getBalanceDiagnosticSnapshot());
-          }
-          results.push(summarizePolicyComparisonResult(variant, samples));
-          if (els.policyComparisonResult) {
-            els.policyComparisonResult.innerHTML = `<strong>정책 비교</strong><br>${index + 1} / ${variants.length} 실행 중...`;
-          }
-          await waitForUiTurn();
-        }
-        renderPolicyComparisonResults(results, horizonMonths);
-      } catch (error) {
-        recordRuntimeError(error, "정책 비교 오류", "정책 비교 실행 중 오류가 감지되었습니다.", { silentToast: true });
-        if (els.policyComparisonResult) {
-          els.policyComparisonResult.classList.add("visible");
-          els.policyComparisonResult.innerHTML = "<strong>정책 비교 오류</strong><br>정책 비교 중 오류가 감지되어 중단했습니다.";
-        }
-        showToast("정책 비교 오류", "정책 비교 중 오류가 감지되었습니다.");
-      } finally {
-        restoreSimulationSnapshot(snapshot);
-        state.debug.suppressVisualUpdates = previousSuppressVisualUpdates;
-        state.running = previousRunning;
-        warnIfStateRestoreFailed("정책 비교", coreSignature, els.policyComparisonResult);
-        if (els.policyComparisonBtn) {
-          els.policyComparisonBtn.disabled = false;
-          els.policyComparisonBtn.textContent = "정책 비교 실행";
-        }
-        safeUpdateAllDisplays();
-        safeUpdateCharts(true);
-        safeRenderSimulation(performance.now());
-        updateRunState();
-      }
-    }
-
-    async function runDeveloperValidationMode() {
-      if (!els.developerValidationResult) return;
-      const originalSnapshot = captureSimulationSnapshot();
-      const beforeSignature = captureCoreStateSignature();
-      let reportHtml = "";
-      try {
-        state.debug.suppressVisualUpdates = true;
-        const cases = [
-          runDeveloperValidationCase(originalSnapshot, "금리 상승 테스트", applyValidationRateHike, [
-            { label: "소비 감소 압력", metric: "consumption", direction: "down", tolerance: 0.10 },
-            { label: "투자 감소 압력", metric: "investment", direction: "down", tolerance: 0.10 },
-            { label: "실업률 상승 압력", metric: "unemployment", direction: "up", tolerance: 0.01 },
-            { label: "물가 하락 압력", metric: "inflation", direction: "down", tolerance: 0.005 }
-          ]),
-          runDeveloperValidationCase(originalSnapshot, "정부지출 증가 테스트", applyValidationSpendingBoost, [
-            { label: "GDP 증가 압력", metric: "gdp", direction: "up", tolerance: 0.10 },
-            { label: "재정수지 악화", metric: "governmentBalance", direction: "down", tolerance: 0.10 },
-            { label: "실업률 하락 압력", metric: "unemployment", direction: "down", tolerance: 0.01 }
-          ]),
-          runDeveloperValidationCase(originalSnapshot, "공급 충격 테스트", applyValidationSupplyShock, [
-            { label: "물가 상승", metric: "inflation", direction: "up", tolerance: 0.005 },
-            { label: "생산량 감소", metric: "output", direction: "down", tolerance: 0.10 },
-            { label: "실업률 상승", metric: "unemployment", direction: "up", tolerance: 0.01 }
-          ]),
-          runDeveloperValidationCase(originalSnapshot, "세율 상승 테스트", applyValidationTaxHike, [
-            { label: "가계 가처분소득 감소", metric: "consumptionCapacity", direction: "down", tolerance: 0.001 },
-            { label: "정부수입 증가", metric: "taxRevenue", direction: "up", tolerance: 0.10 },
-            { label: "소비 둔화", metric: "consumption", direction: "down", tolerance: 0.10 }
-          ])
-        ];
-        const evaluated = evaluateDirectionalValidation(cases);
-        reportHtml = renderValidationReport(evaluated);
-        evaluated.forEach((group) => {
-          group.checks.forEach((check) => console.log(`[${check.status}] ${group.label} → ${check.label}`));
-        });
-      } catch (error) {
-        recordRuntimeError(error, "검증 모드 오류", "방향성 검증 중 오류가 감지되었습니다.");
-        reportHtml = `<strong>검증 실패</strong><br>${escapeHtml(error?.message || String(error))}`;
-      } finally {
-        restoreSimulationSnapshot(originalSnapshot);
-        warnIfStateRestoreFailed("방향성 검증", beforeSignature, els.developerValidationResult);
-        els.developerValidationResult.classList.add("visible");
-        setHtmlIfChanged(els.developerValidationResult, reportHtml || "검증 결과가 없습니다.");
-        safeUpdateAllDisplays();
-        safeUpdateCharts(true);
-      }
-    }
-
-    function runDeveloperValidationCase(baseSnapshot, label, mutator, checks) {
-      restoreSimulationSnapshot(baseSnapshot);
-      state.debug.suppressVisualUpdates = true;
-      state.game.mode = "sandbox";
-      state.game.status = "active";
-      state.game.activeEvent = null;
-      repairSimulationState();
-      updateMacroMetrics();
-      const before = getDeveloperValidationMetrics();
-      mutator();
-      for (let i = 0; i < 24; i += 1) runSimulationStep();
-      const after = getDeveloperValidationMetrics();
+    // ===== 실험·검증 런타임 =====
+    function createExperimentContext() {
       return {
-        label,
-        checks: checks.map((check) => ({
-          label: check.label,
-          direction: check.direction,
-          before: before[check.metric],
-          after: after[check.metric],
-          tolerance: safeNumber(check.tolerance, 0.01)
-        }))
+        state,
+        els,
+        CALIBRATION,
+        TARGET_INFLATION,
+        TARGET_UNEMPLOYMENT,
+        TICKS_PER_MONTH,
+        average,
+        clamp,
+        clearLazyResultCache,
+        compactMoney,
+        compareCoreStateSignatureRuntime,
+        createInitialHistoricalScenario,
+        escapeHtml,
+        formatIndexPoint,
+        formatSigned,
+        formatStockReturn,
+        getAllScenarioPresets,
+        getBalanceDiagnosticSnapshot,
+        historicalScenarioKeys,
+        isLargeEconomyMode,
+        macroMoney,
+        mostFrequent,
+        percent,
+        pushEvent,
+        recordRuntimeError,
+        repairSimulationState,
+        restoreSimulationSnapshotRuntime,
+        round,
+        runSimulationStep,
+        safeNumber,
+        safeRenderBalanceQuickTestResult,
+        safeRenderSimulation,
+        safeUpdateAllDisplays,
+        safeUpdateCharts,
+        setHtmlIfChanged,
+        showToast,
+        signedPercent,
+        syncHistoricalScenarioMetrics,
+        syncLivePolicy,
+        updateControlLabels,
+        updateRunState,
+        applyCalibrationState,
+        applyShock,
+        captureCoreStateSignatureRuntime,
+        captureSimulationSnapshotRuntime,
+        restoreControlSnapshot: updateControlLabels
       };
     }
 
-    function getDeveloperValidationMetrics() {
-      const m = state.metrics || {};
+    function createExperimentRuntimeContext() {
+      return createExperimentRuntime(createExperimentContext());
+    }
+
+    function runBalanceQuickTest(...args) {
+      return createExperimentRuntimeContext().runBalanceQuickTest(...args);
+    }
+
+    async function runScenarioValidation(...args) {
+      return createExperimentRuntimeContext().runScenarioValidation(...args);
+    }
+
+    async function runPolicyComparison(...args) {
+      return createExperimentRuntimeContext().runPolicyComparison(...args);
+    }
+
+    function getPolicyComparisonVariants(...args) {
+      return createExperimentRuntimeContext().getPolicyComparisonVariants(...args);
+    }
+
+    function applyPolicyComparisonVariant(...args) {
+      return createExperimentRuntimeContext().applyPolicyComparisonVariant(...args);
+    }
+
+    function summarizePolicyComparisonResult(...args) {
+      return createExperimentRuntimeContext().summarizePolicyComparisonResult(...args);
+    }
+
+    function policyComparisonRecommendation(...args) {
+      return createExperimentRuntimeContext().policyComparisonRecommendation(...args);
+    }
+
+    function classifyPolicyComparisonSideEffect(...args) {
+      return createExperimentRuntimeContext().classifyPolicyComparisonSideEffect(...args);
+    }
+
+    function renderPolicyComparisonResults(...args) {
+      return createExperimentRuntimeContext().renderPolicyComparisonResults(...args);
+    }
+
+    function waitForUiTurn(...args) {
+      return createExperimentRuntimeContext().waitForUiTurn(...args);
+    }
+
+    function captureSimulationSnapshot(...args) {
+      return createExperimentRuntimeContext().captureSimulationSnapshot(...args);
+    }
+
+    function captureUiSafeSnapshot(...args) {
+      return createExperimentRuntimeContext().captureUiSafeSnapshot(...args);
+    }
+
+    function captureCoreStateSignature(...args) {
+      return createExperimentRuntimeContext().captureCoreStateSignature(...args);
+    }
+
+    function compareCoreStateSignature(...args) {
+      return createExperimentRuntimeContext().compareCoreStateSignature(...args);
+    }
+
+    function warnIfStateRestoreFailed(...args) {
+      return createExperimentRuntimeContext().warnIfStateRestoreFailed(...args);
+    }
+
+    function restoreSimulationSnapshot(...args) {
+      return createExperimentRuntimeContext().restoreSimulationSnapshot(...args);
+    }
+
+    function restoreUiSafeSnapshot(...args) {
+      return createExperimentRuntimeContext().restoreUiSafeSnapshot(...args);
+    }
+
+    function prepareCalibrationScenario(...args) {
+      return createExperimentRuntimeContext().prepareCalibrationScenario(...args);
+    }
+
+    function summarizeScenarioValidation(...args) {
+      return createExperimentRuntimeContext().summarizeScenarioValidation(...args);
+    }
+
+    function judgeScenarioRows(...args) {
+      return createExperimentRuntimeContext().judgeScenarioRows(...args);
+    }
+
+    function scenarioKeyRisk(...args) {
+      return createExperimentRuntimeContext().scenarioKeyRisk(...args);
+    }
+
+    function renderScenarioValidationResults(...args) {
+      return createExperimentRuntimeContext().renderScenarioValidationResults(...args);
+    }
+
+    function renderBalanceQuickTestResult(...args) {
+      return createExperimentRuntimeContext().renderBalanceQuickTestResult(...args);
+    }
+
+    function historicalScenarioJudgement(...args) {
+      return createExperimentRuntimeContext().historicalScenarioJudgement(...args);
+    }
+
+    function historicalScenarioKeyRisk(...args) {
+      return createExperimentRuntimeContext().historicalScenarioKeyRisk(...args);
+    }
+
+    // ===== 개발자 방향성 검증 런타임 =====
+    function createDeveloperValidationContext() {
       return {
-        gdp: safeNumber(m.gdp, 0),
-        output: safeNumber(m.outputValue, safeNumber(m.gdp, 0)),
-        consumption: safeNumber(m.consumption, 0),
-        investment: safeNumber(m.investment, 0),
-        unemployment: safeNumber(m.unemploymentRate, 0),
-        inflation: safeNumber(m.inflation, 0),
-        governmentBalance: safeNumber(m.governmentBalance, 0),
-        taxRevenue: safeNumber(m.taxCollected, 0) + safeNumber(m.corporateTaxCollected, 0) + safeNumber(m.vatRevenue, 0),
-        consumptionCapacity: safeNumber(m.lowIncomeConsumptionCapacity, 0) + safeNumber(m.middleClassConsumptionCapacity, 0)
+        state,
+        els,
+        TARGET_INFLATION,
+        clamp,
+        createInitialFinancialMarket,
+        createInitialRateStructure,
+        escapeHtml,
+        evaluateDirectionalValidation,
+        getDeveloperValidationMetrics,
+        recordRuntimeError,
+        repairSimulationState,
+        renderValidationReport,
+        restoreSimulationSnapshot,
+        round,
+        runSimulationStep,
+        safeNumber,
+        safeUpdateAllDisplays,
+        safeUpdateCharts,
+        setHtmlIfChanged,
+        warnIfStateRestoreFailed,
+        updateMacroMetrics
       };
     }
 
-    function applyValidationRateHike() {
-      if (!state.rates) state.rates = createInitialRateStructure(state.config);
-      if (!state.financialMarket) state.financialMarket = createInitialFinancialMarket(state.config);
-      state.rates.policyRate = clamp(safeNumber(state.rates.policyRate, 0.045) + 0.030, 0, 0.30);
-      state.rates.effectivePolicyRate = clamp(safeNumber(state.rates.effectivePolicyRate, state.rates.policyRate) + 0.018, 0, 0.30);
-      state.government.interestRate = state.rates.effectivePolicyRate;
-      state.financialMarket.creditSpread = clamp(safeNumber(state.financialMarket.creditSpread, 0.02) + 0.006, 0.01, 0.12);
-      state.sentiment.recessionFear = clamp(safeNumber(state.sentiment.recessionFear, 0.25) + 0.08, 0, 1);
+    function createDeveloperValidationRuntimeContext() {
+      return createDeveloperValidationRuntime(createDeveloperValidationContext());
     }
 
-    function applyValidationSpendingBoost() {
-      state.government.effectiveSpending = safeNumber(state.government.effectiveSpending, state.config.governmentSpending) + 260;
-      state.government.spending = safeNumber(state.government.spending, state.config.governmentSpending) + 260;
-      state.shock.demandMultiplier = clamp(safeNumber(state.shock.demandMultiplier, 1) + 0.08, 0.5, 1.8);
-      state.sentiment.consumerConfidence = clamp(safeNumber(state.sentiment.consumerConfidence, 0.7) + 0.06, 0, 1);
+    async function runDeveloperValidationMode(...args) {
+      return createDeveloperValidationRuntimeContext().runDeveloperValidationMode(...args);
     }
 
-    function applyValidationSupplyShock() {
-      state.shock.productivityMultiplier = clamp(safeNumber(state.shock.productivityMultiplier, 1) * 0.82, 0.45, 1.4);
-      state.shock.pricePressure = clamp(safeNumber(state.shock.pricePressure, 0) + 0.026, -0.05, 0.08);
-      if (state.external) {
-        state.external.commodityPriceIndex = clamp(safeNumber(state.external.commodityPriceIndex, 100) + 24, 40, 260);
-        state.external.energyPriceIndex = clamp(safeNumber(state.external.energyPriceIndex, 100) + 28, 40, 280);
-      }
+    function runDeveloperValidationCase(...args) {
+      return createDeveloperValidationRuntimeContext().runDeveloperValidationCase(...args);
     }
 
-    function applyValidationTaxHike() {
-      state.government.householdIncomeTaxRate = clamp(safeNumber(state.government.householdIncomeTaxRate, 0.16) + 0.05, 0, 0.50);
-      state.government.corporateTaxRate = clamp(safeNumber(state.government.corporateTaxRate, 0.18) + 0.05, 0, 0.50);
-      state.government.valueAddedTaxRate = clamp(safeNumber(state.government.valueAddedTaxRate, 0.10) + 0.03, 0, 0.35);
-      state.sentiment.consumerConfidence = clamp(safeNumber(state.sentiment.consumerConfidence, 0.7) - 0.06, 0, 1);
-      state.sentiment.businessConfidence = clamp(safeNumber(state.sentiment.businessConfidence, 0.7) - 0.04, 0, 1);
+    function getDeveloperValidationMetrics(...args) {
+      return createDeveloperValidationRuntimeContext().getDeveloperValidationMetrics(...args);
+    }
+
+    function applyValidationRateHike(...args) {
+      return createDeveloperValidationRuntimeContext().applyValidationRateHike(...args);
+    }
+
+    function applyValidationSpendingBoost(...args) {
+      return createDeveloperValidationRuntimeContext().applyValidationSpendingBoost(...args);
+    }
+
+    function applyValidationSupplyShock(...args) {
+      return createDeveloperValidationRuntimeContext().applyValidationSupplyShock(...args);
+    }
+
+    function applyValidationTaxHike(...args) {
+      return createDeveloperValidationRuntimeContext().applyValidationTaxHike(...args);
     }
 
     async function runDataCalibrationMode() {
@@ -7556,977 +6505,6 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
           setHtmlIfChanged
         }
       };
-    }
-
-    function getPolicyComparisonVariants() {
-      return [
-        { key: "rateUp", label: "금리 +1%p", interestDelta: 1 },
-        { key: "rateDown", label: "금리 -1%p", interestDelta: -1 },
-        { key: "spendingUp", label: "정부지출 확대", spendingDelta: 180 },
-        { key: "incomeTaxCut", label: "소득세 인하", taxDelta: -2 },
-        { key: "corporateTaxCut", label: "법인세 인하", corporateTaxDelta: -3 },
-        { key: "vatUp", label: "부가세 인상", vatDelta: 2 },
-        { key: "creditEasing", label: "신용완화", creditEasing: true },
-        { key: "tighteningPackage", label: "긴축 패키지", interestDelta: 0.75, spendingDelta: -120, taxDelta: 1, corporateTaxDelta: 1, vatDelta: 1 }
-      ];
-    }
-
-    function applyPolicyComparisonVariant(variant) {
-      const setSlider = (element, nextValue, min = -Infinity, max = Infinity) => {
-        if (!element) return;
-        const value = clamp(safeNumber(nextValue, Number(element.value)), min, max);
-        element.value = String(round(value, 2));
-      };
-      setSlider(els.interestSlider, Number(els.interestSlider.value) + safeNumber(variant.interestDelta, 0), 0, 25);
-      setSlider(els.taxSlider, Number(els.taxSlider.value) + safeNumber(variant.taxDelta, 0), 0, 60);
-      setSlider(els.corporateTaxSlider, Number(els.corporateTaxSlider.value) + safeNumber(variant.corporateTaxDelta, 0), 0, 60);
-      setSlider(els.vatSlider, Number(els.vatSlider.value) + safeNumber(variant.vatDelta, 0), 0, 35);
-      setSlider(els.spendingSlider, Number(els.spendingSlider.value) + safeNumber(variant.spendingDelta, 0), 0, 5000);
-      syncLivePolicy();
-      if (variant.creditEasing) {
-        if (state.financialMarket) {
-          state.financialMarket.creditSupplyIndex = clamp(safeNumber(state.financialMarket.creditSupplyIndex, 100) + 8, 60, 125);
-          state.financialMarket.creditSpread = clamp(safeNumber(state.financialMarket.creditSpread, 0.02) - 0.006, 0.008, 0.12);
-          state.financialMarket.creditOfficerCaution = clamp(safeNumber(state.financialMarket.creditOfficerCaution, 0.28) - 0.08, 0, 1);
-          state.financialMarket.loanDemandIndex = clamp(safeNumber(state.financialMarket.loanDemandIndex, 100) + 6, 60, 135);
-        }
-        if (state.creditCycle) {
-          state.creditCycle.underwritingQuality = clamp(safeNumber(state.creditCycle.underwritingQuality, 0.76) - 0.04, 0.35, 1);
-          state.creditCycle.creditExcessRisk = clamp(safeNumber(state.creditCycle.creditExcessRisk, 0.12) + 0.08, 0, 1);
-          state.creditCycle.phase = "신용완화";
-        }
-      }
-      updateControlLabels();
-    }
-
-    function summarizePolicyComparisonResult(variant, samples) {
-      const rows = samples.length ? samples : [getBalanceDiagnosticSnapshot()];
-      const final = rows[rows.length - 1];
-      const avg = (key, fallback = 0) => average(rows.map((row) => safeNumber(row[key], fallback)));
-      const sideEffect = classifyPolicyComparisonSideEffect(rows, variant);
-      return {
-        label: variant.label,
-        finalGdp: safeNumber(final.gdp, 0),
-        finalUnemployment: safeNumber(final.unemploymentRate, 0),
-        avgInflation: avg("inflation", TARGET_INFLATION),
-        avgFinancialConditions: avg("financialConditionIndex", 0),
-        avgDebtToGdp: avg("debtToGdpRatio", 0) * 100,
-        avgClassStress: avg("socialStressIndex", 0) * 100,
-        avgBankHealth: avg("bankHealthIndex", 100),
-        sideEffect,
-        recommendation: policyComparisonRecommendation(variant, sideEffect)
-      };
-    }
-
-    function policyComparisonRecommendation(variant, sideEffect) {
-      if (sideEffect === "관리 가능") return "부작용은 낮지만 효과 크기는 다른 지표와 함께 확인";
-      if (variant.key === "rateUp") return "물가 안정에는 유리하나 부채·주택 경로를 점검";
-      if (variant.key === "rateDown") return "수요 회복에는 유리하나 자산·신용 과열을 점검";
-      if (variant.key === "spendingUp") return "수요 보강에는 유리하나 재정 여력을 점검";
-      if (variant.key === "creditEasing") return "투자 회복에는 직접적이나 신용 과다를 점검";
-      if (variant.key === "corporateTaxCut") return "투자 전환율이 낮으면 자사주·부채상환으로 샐 수 있음";
-      if (variant.key === "vatUp") return "세수에는 유리하나 저소득층 체감물가 부담이 큼";
-      return "긴축 효과와 민간 심리 둔화를 함께 점검";
-    }
-
-    function classifyPolicyComparisonSideEffect(rows, variant) {
-      const avg = (key, fallback = 0) => average(rows.map((row) => safeNumber(row[key], fallback)));
-      if (avg("middleClassMortgageStress", 0) > 0.58 || avg("mortgageRate", 0) > 7.0) return "주택담보 부담";
-      if (avg("creditCrunchRisk", 0.12) > 0.50 || avg("creditSupplyIndex", 100) < 80) return "신용경색 위험";
-      if (avg("assetBubbleRiskScore", 0) > 0.62 || avg("creditExcessRisk", 0.12) > 0.54) return "자산·신용 과열";
-      if (avg("debtToGdpRatio", 0) > 1.35 || avg("fiscalSpaceScore", 0.7) < 0.32) return "재정 여력 약화";
-      if (avg("lowIncomeStress", 0) > 0.58 || avg("consumptionTaxPain", 0) > 0.58) return "저소득층 부담";
-      if (avg("investmentConversionRate", 0.25) < 0.22 && variant.corporateTaxDelta < 0) return "투자 전환 제한";
-      if (avg("inflation", TARGET_INFLATION) > 4.0) return "물가 압력";
-      if (avg("bankHealthIndex", 100) < 72) return "은행 건전성";
-      return "관리 가능";
-    }
-
-    function renderPolicyComparisonResults(results, horizonMonths) {
-      if (!els.policyComparisonResult) return;
-      const rows = results.map((result) => `
-        <tr>
-          <td>${escapeHtml(result.label)}</td>
-          <td>${macroMoney(result.finalGdp)}</td>
-          <td>${percent(result.finalUnemployment, 1)}</td>
-          <td>${signedPercent(result.avgInflation)}</td>
-          <td>${round(result.avgFinancialConditions, 1).toFixed(1)}</td>
-          <td>${percent(result.avgDebtToGdp, 1)}</td>
-          <td>${percent(result.avgClassStress, 0)}</td>
-          <td>${round(result.avgBankHealth, 1).toFixed(1)}</td>
-          <td>${escapeHtml(result.sideEffect)}</td>
-        </tr>
-      `).join("");
-      const bestGrowth = results.reduce((best, item) => item.finalGdp > best.finalGdp ? item : best, results[0]);
-      const safest = results.reduce((best, item) => (item.avgFinancialConditions + Math.max(0, 80 - item.avgBankHealth)) < (best.avgFinancialConditions + Math.max(0, 80 - best.avgBankHealth)) ? item : best, results[0]);
-      const leastClassStress = results.reduce((best, item) => item.avgClassStress < best.avgClassStress ? item : best, results[0]);
-      const lowestFinancialRisk = results.reduce((best, item) => {
-        const itemRisk = item.avgFinancialConditions + Math.max(0, 80 - item.avgBankHealth) + Math.max(0, item.avgDebtToGdp - 100) * 0.08;
-        const bestRisk = best.avgFinancialConditions + Math.max(0, 80 - best.avgBankHealth) + Math.max(0, best.avgDebtToGdp - 100) * 0.08;
-        return itemRisk < bestRisk ? item : best;
-      }, results[0]);
-      const winnerSummary = `성장 우위: ${escapeHtml(bestGrowth?.label || "없음")} / 안정 우위: ${escapeHtml(safest?.label || "없음")} / 계층 부담 최소: ${escapeHtml(leastClassStress?.label || "없음")} / 금융위험 최소: ${escapeHtml(lowestFinancialRisk?.label || "없음")}`;
-      setHtmlIfChanged(els.policyComparisonSummaryValue, winnerSummary);
-      els.policyComparisonResult.classList.add("visible");
-      setHtmlIfChanged(els.policyComparisonResult, `
-        <strong>정책 비교 결과 · ${horizonMonths}개월</strong><br>
-        ${winnerSummary}
-        <details open><summary>요약표 보기</summary>
-          <table style="width:100%; margin-top:6px; border-collapse:collapse; font-size:11px;">
-            <thead><tr><th>정책</th><th>GDP</th><th>실업</th><th>물가</th><th>금융</th><th>부채/GDP</th><th>계층</th><th>은행</th><th>부작용</th></tr></thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </details>
-        <details><summary>해석</summary><div style="margin-top:6px;">${results.map((result) => `<strong>${escapeHtml(result.label)}</strong>: ${escapeHtml(result.recommendation)}`).join("<br>")}<br><br>이 비교는 현재 모형 상태에서 대안 정책을 내부적으로 실행한 교육용 반사실 실험입니다. 실제 예측이 아니라 정책 전달 경로의 상대적 방향을 보여줍니다.</div></details>
-      `);
-    }
-
-    function waitForUiTurn() {
-      return new Promise((resolve) => setTimeout(resolve, 0));
-    }
-
-    function captureSimulationSnapshot() {
-      return captureSimulationSnapshotRuntime(state, els);
-    }
-
-    function captureUiSafeSnapshot() {
-      return captureSimulationSnapshot();
-    }
-
-    function captureCoreStateSignature() {
-      return captureCoreStateSignatureRuntime(state, { round, safeNumber });
-    }
-
-    function compareCoreStateSignature(before, after) {
-      return compareCoreStateSignatureRuntime(before, after, safeNumber);
-    }
-
-    function warnIfStateRestoreFailed(label, beforeSignature, targetElement = null) {
-      const diffKeys = compareCoreStateSignature(beforeSignature, captureCoreStateSignature());
-      if (!diffKeys.length) return false;
-      const message = `${label} 후 상태 복원 차이가 감지되었습니다: ${diffKeys.join(", ")}`;
-      recordRuntimeError(new Error(message), "상태 복원 경고", message, { silentToast: true });
-      showToast("상태 복원 경고", "내부 비교 실행 후 일부 지표 복원 차이가 감지되었습니다.");
-      if (targetElement) {
-        targetElement.classList.add("visible");
-        targetElement.insertAdjacentHTML("afterbegin", `<div class="balance-warnings">상태 복원 경고: ${escapeHtml(diffKeys.join(", "))}</div>`);
-      }
-      return true;
-    }
-
-    function restoreSimulationSnapshot(snapshot) {
-      restoreSimulationSnapshotRuntime(state, els, snapshot, updateControlLabels);
-    }
-
-    function restoreUiSafeSnapshot(snapshot) {
-      restoreSimulationSnapshot(snapshot);
-    }
-
-    function prepareCalibrationScenario(key) {
-      const scenarios = getAllScenarioPresets();
-      const scenario = scenarios[key] || scenarios.stableGrowth;
-      els.interestSlider.value = scenario.interest;
-      els.taxSlider.value = scenario.tax;
-      els.corporateTaxSlider.value = scenario.corporateTax;
-      els.vatSlider.value = scenario.vat ?? 10;
-      els.spendingSlider.value = scenario.spending;
-      els.wageSlider.value = scenario.wage;
-      els.inflationSlider.value = scenario.inflation;
-      resetSimulation();
-      if (scenario.shock) applyShock(scenario.shock);
-      applyCalibrationState(scenario);
-      if (historicalScenarioKeys().includes(key)) {
-        state.historicalScenario = {
-          ...createInitialHistoricalScenario(),
-          active: false,
-          key,
-          label: scenario.label,
-          currentPhaseLabel: "즉시 프리셋",
-          currentShock: scenario.message || "역사 시나리오 즉시 프리셋",
-          intensity: 0.58
-        };
-        syncHistoricalScenarioMetrics();
-      }
-      state.game.scenarioName = scenario.label;
-      state.running = false;
-      state.game.activeEvent = null;
-      state.game.nextEventTick = state.tick + TICKS_PER_MONTH * 120 + 9999;
-      state.debug.suppressVisualUpdates = true;
-    }
-
-    function summarizeScenarioValidation(key, samples) {
-      const rows = samples.length ? samples : [getBalanceDiagnosticSnapshot()];
-      const preset = getAllScenarioPresets()[key] || { label: key };
-      const final = rows[rows.length - 1];
-      const avgUnemployment = average(rows.map((row) => row.unemploymentRate));
-      const avgInflation = average(rows.map((row) => row.inflation));
-      const avgFirmStress = average(rows.map((row) => row.firmStressRatio));
-      const avgBankHealth = average(rows.map((row) => row.bankHealthIndex));
-      const avgCreditSupply = average(rows.map((row) => row.creditSupplyIndex));
-      const avgStockReturn = average(rows.map((row) => row.stockMonthlyReturn));
-      const avgHousingReturn = average(rows.map((row) => row.housingReturn || row.residentialReturn));
-      const avgDebtToGdp = average(rows.map((row) => row.debtToGdpRatio * 100));
-      const judgement = judgeScenarioRows(rows, key);
-      return {
-        label: preset.label,
-        judgement,
-        finalUnemployment: final.unemploymentRate,
-        avgUnemployment,
-        avgInflation,
-        finalGdp: final.gdp,
-        avgFirmStress,
-        avgBankHealth,
-        avgCreditSupply,
-        avgStockReturn,
-        avgHousingReturn,
-        avgDebtToGdp,
-        keyRisk: scenarioKeyRisk(rows, judgement, key)
-      };
-    }
-
-    function judgeScenarioRows(rows, key = "") {
-      const avgUnemployment = average(rows.map((row) => row.unemploymentRate));
-      const peakUnemployment = Math.max(...rows.map((row) => row.unemploymentRate));
-      const avgInflation = average(rows.map((row) => row.inflation));
-      const avgOutputGap = average(rows.map((row) => row.outputGap));
-      const avgFirmStress = average(rows.map((row) => row.firmStressRatio));
-      const avgBankHealth = average(rows.map((row) => row.bankHealthIndex));
-      const avgCreditSupply = average(rows.map((row) => row.creditSupplyIndex));
-      const avgHousingAffordability = average(rows.map((row) => row.housingAffordability));
-      const avgDebtToGdp = average(rows.map((row) => row.debtToGdpRatio * 100));
-      const avgBubble = average(rows.map((row) => row.assetBubbleRiskScore));
-      const avgZombie = average(rows.map((row) => row.zombieFirmRatio));
-      const avgCommodity = average(rows.map((row) => row.commodityCostPressure));
-      const avgCreditCrunchRisk = average(rows.map((row) => safeNumber(row.creditCrunchRisk, 0.12)));
-      const avgCreditExcessRisk = average(rows.map((row) => safeNumber(row.creditExcessRisk, 0.12)));
-      const avgBondMarketStress = average(rows.map((row) => safeNumber(row.bondMarketStress, 0.10)));
-      const avgDepositorConfidence = average(rows.map((row) => safeNumber(row.depositorConfidence, 0.88)));
-      const avgInterbankTrust = average(rows.map((row) => safeNumber(row.interbankTrust, 0.84)));
-      const avgVatBurden = average(rows.map((row) => safeNumber(row.consumptionTaxPain, 0)));
-      const avgCorporateTaxPressure = average(rows.map((row) => safeNumber(row.corporateTaxPressure, 0)));
-      const avgInvestmentConversion = average(rows.map((row) => safeNumber(row.investmentConversionRate, 0)));
-      const avgBuybackPayout = average(rows.map((row) => safeNumber(row.buybackPayoutRatio, 0)));
-      const avgMarketFailureRisk = average(rows.map((row) => safeNumber(row.marketFailureRisk, 0.22)));
-      const avgMarketSuccessScore = average(rows.map((row) => safeNumber(row.marketSuccessScore, 0.50)));
-      const failureType = mostFrequent(rows.map((row) => row.marketFailureType || "없음"));
-      const successType = mostFrequent(rows.map((row) => row.marketSuccessType || "형성 중"));
-      const avgForeignInvestorSentiment = average(rows.map((row) => safeNumber(row.foreignInvestorSentiment, 0.72)));
-      const avgForeignBondDemand = average(rows.map((row) => safeNumber(row.foreignBondDemand, 0.74)));
-      const avgAgricultureStress = average(rows.map((row) => safeNumber(row.agricultureStress, 0)));
-      const avgEnergyStress = average(rows.map((row) => safeNumber(row.energyStress, 0)));
-      const historicalKey = key || mostFrequent(rows.map((row) => row.historicalScenarioKey || ""));
-      const avgHistoricalIntensity = average(rows.map((row) => safeNumber(row.historicalScenarioIntensity, 0)));
-      if (peakUnemployment > 45 || avgUnemployment > 25) return "붕괴 위험";
-      if (historicalKey && avgHistoricalIntensity > 0.25) return historicalScenarioJudgement(historicalKey);
-      if (avgInflation > 3.5 && avgOutputGap < -2) return "스태그플레이션 위험";
-      if (avgEnergyStress > 0.58) return "에너지 비용 충격";
-      if (avgAgricultureStress > 0.58) return "농업 공급 충격";
-      if (avgForeignInvestorSentiment < 0.45 || avgForeignBondDemand < 0.45) return "해외자본 유출 압력";
-      if (avgMarketFailureRisk > 0.58) return failureType === "정보 비대칭" ? "정보 비대칭형 불안" : failureType === "신용 배분 실패" ? "신용 배분 실패" : failureType === "외부비용 충격" ? "외부비용 충격" : "시장 실패 위험";
-      if (avgCommodity > 1.6 && avgInflation > 2.7) return "원자재 비용 충격";
-      if (avgCreditCrunchRisk > 0.50 || avgCreditSupply < 70) return "신용경색 위험";
-      if (avgCreditExcessRisk > 0.52 && avgBubble > 0.48) return "신용 과다 누적";
-      if (avgBondMarketStress > 0.52) return "국채시장 스트레스";
-      if (avgDepositorConfidence < 0.58 || avgInterbankTrust < 0.58) return "은행 심리 위축";
-      if (avgVatBurden > 0.58 && avgUnemployment > 8) return "부가세 부담형 소비둔화";
-      if (avgCorporateTaxPressure > 0.62 && avgInvestmentConversion < 0.24) return "법인세 부담형 투자둔화";
-      if (avgBuybackPayout > 0.34 && avgInvestmentConversion < 0.24) return "자사주 우선 배분";
-      if (avgBankHealth < 70 || avgCreditSupply < 72) return "금융여건 긴축";
-      if (avgBubble > 0.65 || avgHousingAffordability > 1.65) return "자산시장 과열";
-      if (avgZombie > 15) return "좀비기업 누적";
-      if (avgDebtToGdp > 160) return "재정 여력 제한";
-      if (avgFirmStress > 45) return "기업 금융 스트레스형 안정";
-      const avgHiddenVulnerability = average(rows.map((row) => safeNumber(row.hiddenVulnerabilityIndex, 0)));
-      if (avgHiddenVulnerability > 0.58) return "숨은 취약성 누적";
-      if (avgMarketSuccessScore > 0.70 && avgMarketFailureRisk < 0.35 && avgOutputGap > -2) return successType === "생산성 개선" ? "생산성 기반 성장" : "시장 기능 개선";
-      if (!historicalKey && avgUnemployment >= 4 && avgUnemployment <= 8 && avgInflation >= 1 && avgInflation <= 3 && avgOutputGap >= -3 && avgOutputGap <= 3 && avgFirmStress < 40 && avgBankHealth > 75 && avgCreditSupply > 78 && avgHiddenVulnerability < 0.45 && avgVatBurden < 0.55 && avgInvestmentConversion > 0.22 && avgBuybackPayout < 0.38 && avgMarketFailureRisk < 0.42) return "정상 성장";
-      if (avgUnemployment > 10 || avgOutputGap < -4) return "수요 부족형 둔화";
-      if (avgInflation > 3.2) return "과열 위험";
-      return "겉보기 안정";
-    }
-
-    function scenarioKeyRisk(rows, judgement, key = "") {
-      const avgDebtBurden = average(rows.map((row) => row.averageHouseholdDebtBurden));
-      const avgCreditSpread = average(rows.map((row) => row.creditSpread));
-      const avgHousingAffordability = average(rows.map((row) => row.housingAffordability));
-      const avgBubble = average(rows.map((row) => row.assetBubbleRiskScore));
-      const avgCommodity = average(rows.map((row) => row.commodityCostPressure));
-      const avgZombie = average(rows.map((row) => row.zombieFirmRatio));
-      const avgBankHealth = average(rows.map((row) => row.bankHealthIndex));
-      const avgHiddenVulnerability = average(rows.map((row) => safeNumber(row.hiddenVulnerabilityIndex, 0)));
-      const avgCreditCrunchRisk = average(rows.map((row) => safeNumber(row.creditCrunchRisk, 0.12)));
-      const avgCreditExcessRisk = average(rows.map((row) => safeNumber(row.creditExcessRisk, 0.12)));
-      const avgBondMarketStress = average(rows.map((row) => safeNumber(row.bondMarketStress, 0.10)));
-      const avgDepositorConfidence = average(rows.map((row) => safeNumber(row.depositorConfidence, 0.88)));
-      const avgVatBurden = average(rows.map((row) => safeNumber(row.consumptionTaxPain, 0)));
-      const avgCorporateTaxPressure = average(rows.map((row) => safeNumber(row.corporateTaxPressure, 0)));
-      const avgBuybackPayout = average(rows.map((row) => safeNumber(row.buybackPayoutRatio, 0)));
-      const avgMarketFailureRisk = average(rows.map((row) => safeNumber(row.marketFailureRisk, 0.22)));
-      const avgMarketSuccessScore = average(rows.map((row) => safeNumber(row.marketSuccessScore, 0.50)));
-      const failureType = mostFrequent(rows.map((row) => row.marketFailureType || "없음"));
-      const avgForeignInvestorSentiment = average(rows.map((row) => safeNumber(row.foreignInvestorSentiment, 0.72)));
-      const avgForeignBondDemand = average(rows.map((row) => safeNumber(row.foreignBondDemand, 0.74)));
-      const avgAgricultureStress = average(rows.map((row) => safeNumber(row.agricultureStress, 0)));
-      const avgEnergyStress = average(rows.map((row) => safeNumber(row.energyStress, 0)));
-      const historicalKey = key || mostFrequent(rows.map((row) => row.historicalScenarioKey || ""));
-      if (historicalKey) return historicalScenarioKeyRisk(historicalKey);
-      if (judgement === "정상 성장") return "없음";
-      if (avgMarketSuccessScore > 0.70 && avgMarketFailureRisk < 0.35) return "시장기능";
-      if (avgMarketFailureRisk > 0.55) return failureType;
-      if (avgForeignInvestorSentiment < 0.45 || avgForeignBondDemand < 0.45) return "해외자본";
-      if (avgAgricultureStress > 0.55) return "농업공급";
-      if (avgEnergyStress > 0.55) return "에너지비용";
-      if (avgCreditCrunchRisk > 0.48) return "신용경색";
-      if (avgCreditExcessRisk > 0.50) return "신용과다";
-      if (avgBondMarketStress > 0.50) return "국채변동성";
-      if (avgDepositorConfidence < 0.60) return "예금자신뢰";
-      if (avgVatBurden > 0.55) return "부가세부담";
-      if (avgCorporateTaxPressure > 0.60) return "법인세부담";
-      if (avgBuybackPayout > 0.34) return "자사주우선";
-      if (avgHiddenVulnerability > 0.55) return "숨은취약성";
-      if (avgDebtBurden > 16) return "부채부담";
-      if (avgCreditSpread > 5 || avgBankHealth < 72) return "신용위축";
-      if (avgHousingAffordability > 1.55) return "주거부담";
-      if (avgBubble > 0.60) return "버블";
-      if (avgCommodity > 1.5) return "비용충격";
-      if (avgZombie > 12) return "좀비기업";
-      return "수요둔화";
-    }
-
-    function historicalScenarioJudgement(key) {
-      const map = {
-        koreaImf1997: "외환위기형 긴축",
-        usFinancialCrisis2007: "주택담보 신용위기",
-        japanBubbleEconomy: "자산버블 붕괴 위험",
-        germanyReunification: "재정이전형 성장",
-        turkiyeInflation2018: "고물가·환율 불안"
-      };
-      return map[key] || "역사 시나리오 진행 중";
-    }
-
-    function historicalScenarioKeyRisk(key) {
-      const map = {
-        koreaImf1997: "외환·신용경색",
-        usFinancialCrisis2007: "주택담보",
-        japanBubbleEconomy: "자산버블",
-        germanyReunification: "재정이전",
-        turkiyeInflation2018: "환율·고물가"
-      };
-      return map[key] || "역사충격";
-    }
-
-    function renderScenarioValidationResults(results) {
-      const rows = results.map((result) => `
-        <tr>
-          <td>${escapeHtml(result.label)}</td>
-          <td>${escapeHtml(result.judgement)}</td>
-          <td>${percent(result.avgUnemployment, 1)}</td>
-          <td>${signedPercent(result.avgInflation)}</td>
-          <td>${macroMoney(result.finalGdp)}</td>
-          <td>${escapeHtml(result.keyRisk)}</td>
-        </tr>
-      `).join("");
-      els.scenarioValidationResult.classList.add("visible");
-      els.scenarioValidationResult.innerHTML = `
-        <strong>시나리오 검증 결과</strong>
-        <table style="width:100%; margin-top:6px; border-collapse:collapse; font-size:11px;">
-          <thead><tr><th>시나리오</th><th>판정</th><th>실업률</th><th>물가</th><th>GDP</th><th>핵심 위험</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
-      `;
-    }
-
-    function renderBalanceQuickTestResult(samples) {
-      const rows = samples.length ? samples : [getBalanceDiagnosticSnapshot()];
-      const unemploymentSeries = rows.map((row) => row.unemploymentRate);
-      const inflationSeries = rows.map((row) => row.inflation);
-      const gdpSeries = rows.map((row) => row.gdp);
-      const avgUnemployment = average(unemploymentSeries);
-      const peakUnemployment = unemploymentSeries.length ? Math.max(...unemploymentSeries) : 0;
-      const avgInflation = average(inflationSeries);
-      const peakInflation = inflationSeries.length ? Math.max(...inflationSeries) : 0;
-      const final = rows[rows.length - 1];
-      const lowestGdp = gdpSeries.length ? Math.min(...gdpSeries) : 0;
-      const monthsOver20 = unemploymentSeries.filter((value) => value > 20).length;
-      const monthsOver40 = unemploymentSeries.filter((value) => value > 40).length;
-      const avgHiringFreezeRatio = average(rows.map((row) => row.hiringFreezeRatio));
-      const avgFirmStressRatio = average(rows.map((row) => row.firmStressRatio));
-      const avgInventoryDemandRatio = average(rows.map((row) => row.inventoryDemandRatio));
-      const avgConsumption = average(rows.map((row) => row.consumption));
-      const avgOutputGap = average(rows.map((row) => safeNumber(row.outputGap, 0)));
-      const avgUnemploymentGap = average(rows.map((row) => safeNumber(row.unemploymentGap, row.unemploymentRate - TARGET_UNEMPLOYMENT)));
-      const avgInflationGap = average(rows.map((row) => safeNumber(row.inflationGap, row.inflation - TARGET_INFLATION)));
-      const avgPolicyGap = average(rows.map((row) => safeNumber(row.policyGap, state.metrics.policyGap)));
-      const avgCapacityUtilization = average(rows.map((row) => safeNumber(row.capacityUtilization, 0)));
-      const avgRealWageGrowth = average(rows.map((row) => safeNumber(row.realWageGrowth, 0)));
-      const avgFinancialConditionIndex = average(rows.map((row) => safeNumber(row.financialConditionIndex, 0)));
-      const avgConsumerConfidence = average(rows.map((row) => safeNumber(row.averageConfidence, 0)));
-      const avgFirmConfidence = average(rows.map((row) => safeNumber(row.averageBusinessOutlook, 0)));
-      const avgConsumerSentiment = average(rows.map((row) => safeNumber(row.consumerSentiment, row.averageConfidence || 0.8)));
-      const avgBusinessSentiment = average(rows.map((row) => safeNumber(row.businessSentiment, row.averageBusinessOutlook || 0.8)));
-      const avgBankRiskAppetite = average(rows.map((row) => safeNumber(row.bankRiskAppetite, 0.7)));
-      const avgMarketRiskSentiment = average(rows.map((row) => safeNumber(row.marketRiskSentiment, 0.7)));
-      const avgFearGreedIndex = average(rows.map((row) => safeNumber(row.fearGreedIndex, 50)));
-      const avgStockVolatilityIndex = average(rows.map((row) => safeNumber(row.stockVolatilityIndex, 18)));
-      const extremeFearMonths = rows.filter((row) => safeNumber(row.fearGreedIndex, 50) < 20).length;
-      const extremeGreedMonths = rows.filter((row) => safeNumber(row.fearGreedIndex, 50) > 80).length;
-      const avgInformationUncertainty = average(rows.map((row) => safeNumber(row.informationUncertainty, 0.16)));
-      const avgRumorIntensity = average(rows.map((row) => safeNumber(row.rumorIntensity, 0)));
-      const avgMisperceptionIndex = average(rows.map((row) => safeNumber(row.misperceptionIndex, 0.12)));
-      const avgPolicyClarity = average(rows.map((row) => safeNumber(row.policyClarity, 0.78)));
-      const avgExpectationError = average(rows.map((row) => safeNumber(row.expectationError, 0)));
-      const avgRealEstateBelief = average(rows.map((row) => safeNumber(row.realEstateNeverFallsBelief, 0.46)));
-      const avgStockBelief = average(rows.map((row) => safeNumber(row.stockMarketNeverFailsBelief, 0.46)));
-      const avgHerdIntensity = average(rows.map((row) => safeNumber(row.herdIntensity, 0.18)));
-      const avgFomoIntensity = average(rows.map((row) => safeNumber(row.fomoIntensity, 0.12)));
-      const avgConfirmationBias = average(rows.map((row) => safeNumber(row.confirmationBias, 0.35)));
-      const avgBehaviorMispricing = average(rows.map((row) => safeNumber(row.behavioralMispricingIndex, 0)));
-      const highHousingMispricingMonths = rows.filter((row) => safeNumber(row.housingMispricing, 0) > 20).length;
-      const highStockMispricingMonths = rows.filter((row) => safeNumber(row.stockMispricing, 0) > 24).length;
-      const beliefBreakdownMonths = rows.filter((row) => safeNumber(row.beliefBreakRisk, 0) > 0.62 || safeNumber(row.panicSellingPressure, 0) > 0.62).length;
-      const marketOverreactionMonths = rows.filter((row) => safeNumber(row.marketOverreaction, 0.1) > 0.55).length;
-      const avgSentimentInflationExpectations = average(rows.map((row) => safeNumber(row.sentimentInflationExpectations, TARGET_INFLATION)));
-      const avgRecessionFear = average(rows.map((row) => safeNumber(row.recessionFear, 0.2)));
-      const avgFiscalCredibilitySentiment = average(rows.map((row) => safeNumber(row.fiscalCredibility, 0.75)));
-      const weakConsumerSentimentMonths = rows.filter((row) => safeNumber(row.consumerSentiment, 0.8) < 0.45).length;
-      const weakBusinessSentimentMonths = rows.filter((row) => safeNumber(row.businessSentiment, 0.8) < 0.45).length;
-      const highRecessionFearMonths = rows.filter((row) => safeNumber(row.recessionFear, 0.2) > 0.60).length;
-      const debtToGdpSeries = rows.map((row) => safeNumber(row.debtToGdpRatio, 0) * 100);
-      const avgDebtToGdp = average(debtToGdpSeries);
-      const peakDebtToGdp = debtToGdpSeries.length ? Math.max(...debtToGdpSeries) : 0;
-      const avgHouseholdDebtBurden = average(rows.map((row) => safeNumber(row.averageHouseholdDebtBurden, 0)));
-      const avgFirmDSCR = average(rows.map((row) => safeNumber(row.averageFirmDSCR, 99)));
-      const avgFiscalSpace = average(rows.map((row) => safeNumber(row.fiscalSpaceScore, 1)));
-      const debtStressWarningMonths = rows.filter((row) => safeNumber(row.averageHouseholdDebtBurden, 0) > 18 || safeNumber(row.averageFirmDSCR, 99) < 1.2 || safeNumber(row.fiscalSpaceScore, 1) < 0.25).length;
-      const stockPointSeries = rows.map((row) => safeNumber(row.stockIndexPoints, safeNumber(row.stockIndex, 100) * 25));
-      const finalStockIndexPoints = safeNumber(final.stockIndexPoints, state.metrics.stockIndexPoints || 2500);
-      const lowestStockIndexPoints = stockPointSeries.length ? Math.min(...stockPointSeries) : finalStockIndexPoints;
-      const highestStockIndexPoints = stockPointSeries.length ? Math.max(...stockPointSeries) : finalStockIndexPoints;
-      const stockDrawdown = stockPointSeries.reduce((maxDrawdown, value, index) => {
-        const priorPeak = Math.max(...stockPointSeries.slice(0, index + 1));
-        return Math.max(maxDrawdown, (priorPeak - value) / Math.max(1, priorPeak) * 100);
-      }, 0);
-      const stockCorrectionMonths = rows.filter((row) => safeNumber(row.stockMonthlyReturn, 0) < -10 || safeNumber(row.stockDrawdown, 0) > 10).length;
-      const highValuationMonths = rows.filter((row) => safeNumber(row.stockValuationPressure, 0) > 0.58).length;
-      const avgValuationPressure = average(rows.map((row) => safeNumber(row.stockValuationPressure, 0)));
-      const finalStockIndex = safeNumber(final.stockIndex, state.metrics.stockIndex);
-      const finalHousingIndex = safeNumber(final.housingIndex, state.metrics.housingIndex);
-      const avgStockReturn = average(rows.map((row) => safeNumber(row.stockMonthlyReturn, safeNumber(row.stockReturn, 0) * TICKS_PER_MONTH)));
-      const avgHousingReturn = average(rows.map((row) => safeNumber(row.housingReturn, 0)));
-      const avgWealthEffect = average(rows.map((row) => safeNumber(row.wealthEffect, 0)));
-      const peakBubbleRisk = rows.length ? Math.max(...rows.map((row) => safeNumber(row.assetBubbleRiskScore, 0))) : 0;
-      const avgHousingAffordability = average(rows.map((row) => safeNumber(row.housingAffordability, 1)));
-      const housingStressMonths = rows.filter((row) => safeNumber(row.housingAffordability, 1) > 1.65 || safeNumber(row.averageMortgageBurden, 0) > 12).length;
-      const highBubbleMonths = rows.filter((row) => safeNumber(row.assetBubbleRiskScore, 0) > 0.65).length;
-      const avgFirmStockReturn = average(rows.map((row) => safeNumber(row.averageFirmStockReturn, 0)));
-      const avgResidentialReturn = average(rows.map((row) => safeNumber(row.residentialReturn, row.housingReturn || 0)));
-      const avgCommercialReturn = average(rows.map((row) => safeNumber(row.commercialReturn, 0)));
-      const peakNegativeEquityRatio = rows.length ? Math.max(...rows.map((row) => safeNumber(row.negativeEquityRatio, 0))) : 0;
-      const avgCommercialVacancy = average(rows.map((row) => safeNumber(row.commercialVacancy, 8)));
-      const avgCollateralValueIndex = average(rows.map((row) => safeNumber(row.collateralValueIndex, 100)));
-      const stockPanicMonths = rows.filter((row) => safeNumber(row.stockVolatilityIndex, 18) > 45 || safeNumber(row.fearGreedIndex, 50) < 22).length;
-      const realEstateStressMonths = rows.filter((row) => safeNumber(row.realEstateStress, 0) > 0.55 || safeNumber(row.collateralValueIndex, 100) < 88 || safeNumber(row.commercialVacancy, 8) > 20).length;
-      const highOpacityMonths = rows.filter((row) => safeNumber(row.opaqueFirmRatio, 0) > 35).length;
-      const averageFirmStockVolatility = average(rows.map((row) => safeNumber(row.firmStockVolatility, 0)));
-      const avgPolicyRate = average(rows.map((row) => safeNumber(row.interestRatePercent, 0)));
-      const avgLoanRate = average(rows.map((row) => safeNumber(row.loanRate, 0)));
-      const avgMortgageRate = average(rows.map((row) => safeNumber(row.mortgageRate, 0)));
-      const avgDepositRate = average(rows.map((row) => safeNumber(row.depositRate, 0)));
-      const avgRealPolicyRate = average(rows.map((row) => safeNumber(row.realPolicyRate, 0)));
-      const avgBondYield10Y = average(rows.map((row) => safeNumber(row.bondYield10Y, safeNumber(row.bondYield, 0))));
-      const avgTermSpread = average(rows.map((row) => safeNumber(row.termSpread, 0)));
-      const invertedCurveMonths = rows.filter((row) => safeNumber(row.termSpread, 0) < -0.25).length;
-      const avgDebtServiceBurdenRate = average(rows.map((row) => safeNumber(row.debtServiceBurden, 0)));
-      const avgGovernmentFundingRate = average(rows.map((row) => safeNumber(row.governmentAverageFundingRate, safeNumber(row.bondYield, 0))));
-      const highRateUncertaintyMonths = rows.filter((row) => safeNumber(row.rateUncertainty, 0) > 0.55).length;
-      const policySurpriseCount = rows.filter((row) => Math.abs(safeNumber(row.policySurpriseRate, safeNumber(row.policySurprise, 0))) > 0.35).length;
-      const avgBondYield = average(rows.map((row) => safeNumber(row.bondYield, 0)));
-      const avgTreasuryBill3M = average(rows.map((row) => safeNumber(row.treasuryBill3M, row.shortTermRate || 0)));
-      const avgBondYield5Y = average(rows.map((row) => safeNumber(row.bondYield5Y, row.bondYield10Y || row.bondYield || 0)));
-      const avgBondYield30Y = average(rows.map((row) => safeNumber(row.bondYield30Y, row.bondYield10Y || row.bondYield || 0)));
-      const avgLongBondPriceIndex = average(rows.map((row) => safeNumber(row.longBondPriceIndex, 100)));
-      const avgBondMarketStress = average(rows.map((row) => safeNumber(row.bondMarketStress, 0.10)));
-      const avgDepositorConfidence = average(rows.map((row) => safeNumber(row.depositorConfidence, 0.88)));
-      const avgInterbankTrust = average(rows.map((row) => safeNumber(row.interbankTrust, 0.84)));
-      const avgCreditOfficerCaution = average(rows.map((row) => safeNumber(row.creditOfficerCaution, 0.28)));
-      const avgLoanDemandIndex = average(rows.map((row) => safeNumber(row.loanDemandIndex, 100)));
-      const avgCreditGap = average(rows.map((row) => safeNumber(row.creditGap, 0)));
-      const avgUnderwritingQuality = average(rows.map((row) => safeNumber(row.underwritingQuality, 0.76)));
-      const avgCreditCrunchRisk = average(rows.map((row) => safeNumber(row.creditCrunchRisk, 0.12)));
-      const avgCreditExcessRisk = average(rows.map((row) => safeNumber(row.creditExcessRisk, 0.12)));
-      const creditCrunchMonths = rows.filter((row) => safeNumber(row.creditCrunchRisk, 0.12) > 0.55 || row.creditCyclePhase === "신용경색").length;
-      const creditExcessMonths = rows.filter((row) => safeNumber(row.creditExcessRisk, 0.12) > 0.55 || row.creditCyclePhase === "신용 과다").length;
-      const longRateShockMonths = rows.filter((row) => safeNumber(row.bondMarketStress, 0.10) > 0.55 || safeNumber(row.longBondPriceIndex, 100) < 82 || safeNumber(row.bondYield30Y, 0) > safeNumber(row.bondYield10Y, 0) + 1.8).length;
-      const avgCreditSpread = average(rows.map((row) => safeNumber(row.creditSpread, 0)));
-      const avgBankHealth = average(rows.map((row) => safeNumber(row.bankHealthIndex, 100)));
-      const avgCreditSupply = average(rows.map((row) => safeNumber(row.creditSupplyIndex, 100)));
-      const peakBankStress = rows.length ? Math.max(...rows.map((row) => safeNumber(row.bankStress, 0))) : 0;
-      const bankingCrisisMonths = rows.filter((row) => safeNumber(row.bankingCrisisRiskScore, 0) > 0.60).length;
-      const avgSafeHavenDemand = average(rows.map((row) => safeNumber(row.safeHavenDemand, 0)));
-      const finalGoldIndex = safeNumber(final.goldIndex, state.metrics.goldIndex);
-      const finalSilverIndex = safeNumber(final.silverIndex, state.metrics.silverIndex);
-      const avgLowIncomeConsumptionCapacity = average(rows.map((row) => safeNumber(row.lowIncomeConsumptionCapacity, 1)));
-      const avgMiddleClassHousingBurden = average(rows.map((row) => safeNumber(row.middleClassHousingBurden, 0)));
-      const avgHighIncomeAssetEffect = average(rows.map((row) => safeNumber(row.highIncomeWealthEffect, 0)));
-      const avgWealthInequality = average(rows.map((row) => safeNumber(row.wealthInequality, 0)));
-      const avgWealthyAssetEffect = average(rows.map((row) => safeNumber(row.wealthyAssetEffect, 0)));
-      const avgClassSentimentGap = average(rows.map((row) => safeNumber(row.classSentimentGap, 0)));
-      const avgHiddenVulnerability = average(rows.map((row) => safeNumber(row.hiddenVulnerabilityIndex, 0)));
-      const avgHouseholdVulnerability = average(rows.map((row) => safeNumber(row.householdVulnerability, 0)));
-      const avgFirmVulnerability = average(rows.map((row) => safeNumber(row.firmVulnerability, 0)));
-      const avgBankVulnerability = average(rows.map((row) => safeNumber(row.bankVulnerability, 0)));
-      const avgHousingVulnerability = average(rows.map((row) => safeNumber(row.housingVulnerability, 0)));
-      const avgExternalVulnerability = average(rows.map((row) => safeNumber(row.externalVulnerability, 0)));
-      const hiddenVulnerabilityMonths = rows.filter((row) => safeNumber(row.hiddenVulnerabilityIndex, 0) > 0.58).length;
-      const lowIncomeStressMonths = rows.filter((row) => safeNumber(row.lowIncomeStress, 0) > 0.62 || safeNumber(row.lowIncomeConsumptionCapacity, 1) < 0.70).length;
-      const middleMortgageStressMonths = rows.filter((row) => safeNumber(row.middleClassMortgageStress, 0) > 0.62 || safeNumber(row.middleClassHousingBurden, 0) > 16).length;
-      const wealthInequalityRisingMonths = rows.filter((row, index) => index > 0 && safeNumber(row.wealthInequality, 0) > safeNumber(rows[index - 1].wealthInequality, 0) + 0.002).length;
-      const avgExchangeRateIndex = average(rows.map((row) => safeNumber(row.exchangeRateIndex, 100)));
-      const avgImportPriceInflation = average(rows.map((row) => safeNumber(row.importPriceIndex, 100) - 100));
-      const avgCommodityPressure = average(rows.map((row) => safeNumber(row.commodityCostPressure, 0)));
-      const avgCentralBankCredibility = average(rows.map((row) => safeNumber(row.centralBankCredibility, 0.78)));
-      const deAnchoredInflationMonths = rows.filter((row) => Math.abs(safeNumber(row.sentimentInflationExpectations, TARGET_INFLATION) - TARGET_INFLATION) > 1.3 || safeNumber(row.inflationTargetCredibility, 0.8) < 0.45).length;
-      const avgZombieFirmRatio = average(rows.map((row) => safeNumber(row.zombieFirmRatio, 0)));
-      const avgDistressedFirmRatio = average(rows.map((row) => safeNumber(row.distressedFirmRatio, 0)));
-      const avgSocialStressIndex = average(rows.map((row) => safeNumber(row.socialStressIndex, 0)));
-      const avgVatBurden = average(rows.map((row) => safeNumber(row.consumptionTaxPain, 0)));
-      const avgHouseholdTaxPressure = average(rows.map((row) => safeNumber(row.householdTaxPressure, 0)));
-      const avgCorporateTaxPressure = average(rows.map((row) => safeNumber(row.corporateTaxPressure, 0)));
-      const avgTaxSentimentScore = average(rows.map((row) => safeNumber(row.taxSentimentScore, 0)));
-      const totalHouseholdTax = sum(rows.map((row) => safeNumber(row.householdIncomeTaxCollected, 0)));
-      const totalCorporateTax = sum(rows.map((row) => safeNumber(row.corporateTaxCollected, 0)));
-      const totalVat = sum(rows.map((row) => safeNumber(row.valueAddedTaxCollected, 0)));
-      const totalTax = Math.max(1, totalHouseholdTax + totalCorporateTax + totalVat);
-      const householdTaxShare = totalHouseholdTax / totalTax * 100;
-      const corporateTaxShare = totalCorporateTax / totalTax * 100;
-      const vatTaxShare = totalVat / totalTax * 100;
-      const avgBuybackDividendSpending = average(rows.map((row) => safeNumber(row.buybackDividendSpending, 0)));
-      const avgDebtRepaymentAllocation = average(rows.map((row) => safeNumber(row.debtRepaymentAllocation, 0)));
-      const avgRetainedEarningsAllocation = average(rows.map((row) => safeNumber(row.retainedEarningsAllocation, 0)));
-      const avgInvestmentConversionRate = average(rows.map((row) => safeNumber(row.investmentConversionRate, 0)));
-      const avgBuybackPayoutRatio = average(rows.map((row) => safeNumber(row.buybackPayoutRatio, 0)));
-      const lowIncomeTaxPainMonths = rows.filter((row) => safeNumber(row.consumptionTaxPain, 0) > 0.58 && safeNumber(row.lowIncomeStress, 0) > 0.48).length;
-      const corporateTaxDragMonths = rows.filter((row) => safeNumber(row.corporateTaxPressure, 0) > 0.62 && safeNumber(row.investmentConversionRate, 0) < 0.24).length;
-      const buybackPriorityMonths = rows.filter((row) => safeNumber(row.buybackPayoutRatio, 0) > 0.34 && safeNumber(row.investmentConversionRate, 0) < 0.24).length;
-      const mostStressedSector = mostFrequent(rows.map((row) => row.mostStressedSector || "없음"));
-      const avgConstructionStress = average(rows.map((row) => safeNumber(row.constructionStress, 0)));
-      const avgManufacturingStress = average(rows.map((row) => safeNumber(row.manufacturingStress, 0)));
-      const avgTechnologyStress = average(rows.map((row) => safeNumber(row.technologyStress, 0)));
-      const avgAgricultureStress = average(rows.map((row) => safeNumber(row.agricultureStress, 0)));
-      const avgEnergyStress = average(rows.map((row) => safeNumber(row.energyStress, 0)));
-      const avgMarketFailureRisk = average(rows.map((row) => safeNumber(row.marketFailureRisk, 0.22)));
-      const avgMarketSuccessScore = average(rows.map((row) => safeNumber(row.marketSuccessScore, 0.50)));
-      const mostFrequentFailureType = mostFrequent(rows.map((row) => row.marketFailureType || "없음"));
-      const mostFrequentSuccessType = mostFrequent(rows.map((row) => row.marketSuccessType || "형성 중"));
-      const avgForeignInvestorSentiment = average(rows.map((row) => safeNumber(row.foreignInvestorSentiment, 0.72)));
-      const avgForeignBondDemand = average(rows.map((row) => safeNumber(row.foreignBondDemand, 0.74)));
-      const avgExportConsumerDemand = average(rows.map((row) => safeNumber(row.exportConsumerDemand, row.exportDemand || 100)));
-      const marketFailureWarningMonths = rows.filter((row) => safeNumber(row.marketFailureRisk, 0.22) > 0.58).length;
-      const marketSuccessMonths = rows.filter((row) => safeNumber(row.marketSuccessScore, 0.50) > 0.68).length;
-      const avgHistoricalScenarioIntensity = average(rows.map((row) => safeNumber(row.historicalScenarioIntensity, 0)));
-      const historicalActiveMonths = rows.filter((row) => safeNumber(row.historicalScenarioActive, 0) > 0 || safeNumber(row.historicalScenarioIntensity, 0) > 0.25).length;
-      const historicalScenarioKey = mostFrequent(rows.map((row) => row.historicalScenarioKey || ""));
-      const historicalScenarioLabel = mostFrequent(rows.map((row) => row.historicalScenarioLabel || "비활성"));
-      const historicalScenarioPhase = mostFrequent(rows.map((row) => row.historicalScenarioPhase || "비활성"));
-      const modelWarnings = getModelHealthWarnings(rows);
-
-      let judgement = "겉보기 안정";
-      if (avgUnemployment >= 12 || peakUnemployment >= 25 || avgOutputGap < -8) judgement = "수요 부족형 침체";
-      if (historicalScenarioKey && avgHistoricalScenarioIntensity > 0.25) judgement = historicalScenarioJudgement(historicalScenarioKey);
-      if (avgHouseholdDebtBurden > 20) judgement = "가계 부채 부담형 둔화";
-      if (avgFirmDSCR < 1.2) judgement = "기업 부채 부담형 둔화";
-      if (avgFiscalSpace < 0.25 || avgDebtToGdp > 160) judgement = "재정 여력 제한";
-      if (Math.max(safeNumber(state.policy?.taxEffective, 0), safeNumber(state.policy?.corporateTaxEffective, 0)) > 0.30 && avgOutputGap < -2) judgement = "세금 부담형 둔화";
-      if (avgUnemployment < 3 && avgInflation < 0.8) judgement = "재고 과잉형 안정";
-      if (avgInventoryDemandRatio > 2.7 && avgHiringFreezeRatio < 40) judgement = "재고 과잉형 안정";
-      if (avgFirmStressRatio >= 45 || avgHiringFreezeRatio >= 40) judgement = "기업 금융 스트레스형 안정";
-      if (avgInflation > 3.5 && avgOutputGap > 2) judgement = "과열 위험";
-      if (avgInflation > 3.2 && avgOutputGap < -3) judgement = "스태그플레이션 위험";
-      if (avgPolicyGap > 3 && avgOutputGap < -2) judgement = "정책 긴축 과다";
-      if (avgPolicyGap < -2.5 && avgInflation > 2.8) judgement = "정책 완화 과다";
-      if (avgRealPolicyRate > 3.2 && avgOutputGap < -1.5) judgement = "실질금리 부담";
-      if (avgMortgageRate > 7.2 && (housingStressMonths > 12 || avgHousingAffordability > 1.55)) judgement = "주택담보 부담형 둔화";
-      if (invertedCurveMonths > 12 && avgBusinessSentiment < 0.65) judgement = "장단기 금리차 역전 위험";
-      if (highRateUncertaintyMonths > 12 || policySurpriseCount > 8) judgement = "정책 불확실성 상승";
-      if (avgGovernmentFundingRate > 6.2 && avgDebtToGdp > 110) judgement = "재정 이자비용 부담";
-      if (avgRealPolicyRate < -1.2 && peakBubbleRisk > 0.55) judgement = "저금리 과열";
-      if (creditExcessMonths > 18 || (avgCreditExcessRisk > 0.52 && avgCreditGap > 0.18)) judgement = "신용 과다 누적";
-      if (avgBondMarketStress > 0.52 || longRateShockMonths > 12 || avgLongBondPriceIndex < 84) judgement = "국채시장 스트레스";
-      if (avgBondYield30Y > avgBondYield10Y + 1.4 && avgMortgageRate > 6.5) judgement = "장기금리 충격";
-      if (avgDepositorConfidence < 0.58 || avgInterbankTrust < 0.58 || avgCreditOfficerCaution > 0.62) judgement = "은행 심리 위축";
-      if (creditCrunchMonths > 12 || avgCreditCrunchRisk > 0.50) judgement = "신용경색 위험";
-      if (avgFinancialConditionIndex > 24 || (avgStockReturn < -0.2 && avgHousingReturn < -0.08)) judgement = "금융여건 긴축";
-      if (avgBondYield > state.metrics.interestRatePercent + 3.0 && avgDebtToGdp > 100) judgement = "재정금리 부담";
-      if (avgCreditSupply < 72 || avgCreditSpread > 5.5) judgement = "신용위축형 침체";
-      if (avgBankHealth < 70 || peakBankStress > 0.62 || bankingCrisisMonths > 8) judgement = "은행 스트레스 위험";
-      if (avgSafeHavenDemand > 55) judgement = "안전자산 선호 급등";
-      if (avgSafeHavenDemand > 48 && safeNumber(average(rows.map((row) => safeNumber(row.flightToQualityDemand, 0))), 0) > 0.38) judgement = "안전자산 선호형 긴축";
-      if (avgConsumerSentiment < 0.48 || weakConsumerSentimentMonths > 18) judgement = "소비심리 위축";
-      if (avgBusinessSentiment < 0.48 || weakBusinessSentimentMonths > 18) judgement = "기업심리 위축";
-      if (avgRecessionFear > 0.55 || highRecessionFearMonths > 18) judgement = "심리 위축형 둔화";
-      if (avgMarketRiskSentiment < 0.45 || avgBankRiskAppetite < 0.45) judgement = "위험회피 심화";
-      if (avgFearGreedIndex < 25 || extremeFearMonths > 12) judgement = "공포심리 주도 둔화";
-      if (avgFearGreedIndex > 76 || extremeGreedMonths > 12) judgement = "탐욕 과열";
-      if (avgRealEstateBelief > 0.68 && highHousingMispricingMonths > 12) judgement = "부동산 불패 과열";
-      if (avgStockBelief > 0.68 && highStockMispricingMonths > 12) judgement = "주식 불패 과열";
-      if (avgBehaviorMispricing > 0.65 || highHousingMispricingMonths + highStockMispricingMonths > 24) judgement = "가치-가격 괴리 위험";
-      if (avgHerdIntensity > 0.62 || avgFomoIntensity > 0.65) judgement = "군중심리형 과열";
-      if (avgConfirmationBias > 0.62 && avgInformationUncertainty > 0.42) judgement = "정보 격차형 버블";
-      if (beliefBreakdownMonths > 8) judgement = "믿음 붕괴 위험";
-      if (avgInformationUncertainty > 0.50 || avgMisperceptionIndex > 0.45 || marketOverreactionMonths > 12) judgement = "정보 격차형 불안";
-      if (avgRumorIntensity > 0.28 && avgCreditSupply < 82) judgement = "루머 주도 신용위축";
-      if (avgSentimentInflationExpectations > TARGET_INFLATION + 1.4) judgement = "기대인플레이션 불안";
-      if (avgFiscalCredibilitySentiment < 0.45) judgement = "재정 신뢰도 약화";
-      if (avgLowIncomeConsumptionCapacity < 0.72 && avgWealthInequality > 0.50) judgement = "계층별 소비 양극화";
-      if (lowIncomeStressMonths > 12 || avgLowIncomeConsumptionCapacity < 0.68) judgement = "저소득층 물가 부담";
-      if (middleMortgageStressMonths > 12 || avgMiddleClassHousingBurden > 16) judgement = "중산층 주거비 부담";
-      if (avgWealthyAssetEffect > 1.2 && avgWealthInequality > 0.52 && wealthInequalityRisingMonths > 12) judgement = "자산효과 편중";
-      if (avgClassSentimentGap > 0.34 && avgSocialStressIndex > 0.50) judgement = "계층별 소비 양극화";
-      if (avgHiddenVulnerability > 0.58 || hiddenVulnerabilityMonths > 18) judgement = "숨은 취약성 누적";
-      if (avgBankVulnerability > 0.58 && avgCreditSupply < 84) judgement = "은행 스트레스 위험";
-      if (avgHousingVulnerability > 0.58) judgement = "주거비 부담형 둔화";
-      if (avgExternalVulnerability > 0.58 && avgInflation > 2.5) judgement = "수입물가 충격";
-      if (avgMiddleClassHousingBurden > 14 || avgHousingAffordability > 1.65) judgement = "주거비 부담형 둔화";
-      if (avgImportPriceInflation > 12 && avgInflation > 2.8) judgement = "수입물가 충격";
-      if (avgCommodityPressure > 1.7 && avgInflation > 2.5) judgement = "원자재 비용 충격";
-      if (avgCentralBankCredibility < 0.45 || deAnchoredInflationMonths > 18) judgement = "중앙은행 신뢰도 약화";
-      if (avgZombieFirmRatio > 18) judgement = "좀비기업 누적";
-      if (Math.max(avgConstructionStress, avgManufacturingStress, avgTechnologyStress) > 0.58) judgement = "산업별 불균형";
-      if (avgSocialStressIndex > 0.62) judgement = "사회적 압력 상승";
-      if (lowIncomeTaxPainMonths > 12 || (avgVatBurden > 0.58 && avgLowIncomeConsumptionCapacity < 0.82)) judgement = "부가세 부담형 소비둔화";
-      if (corporateTaxDragMonths > 12 || (avgCorporateTaxPressure > 0.62 && avgInvestmentConversionRate < 0.24)) judgement = "법인세 부담형 투자둔화";
-      if (buybackPriorityMonths > 12 || (avgBuybackPayoutRatio > 0.34 && avgInvestmentConversionRate < 0.24)) judgement = "자사주 우선 배분";
-      if (avgTaxSentimentScore > 0.62 && avgClassSentimentGap > 0.30) judgement = "세금 체감 격차 확대";
-      if (avgMarketFailureRisk > 0.58 || marketFailureWarningMonths > 18) judgement = "시장 실패 위험";
-      if (mostFrequentFailureType === "정보 비대칭" && avgMarketFailureRisk > 0.42) judgement = "정보 비대칭형 불안";
-      if (mostFrequentFailureType === "신용 배분 실패" && avgMarketFailureRisk > 0.42) judgement = "신용 배분 실패";
-      if (mostFrequentFailureType === "외부비용 충격" && avgInflation > 2.5) judgement = "외부비용 충격";
-      if (avgForeignInvestorSentiment < 0.45 || avgForeignBondDemand < 0.45) judgement = "해외자본 유출 압력";
-      if (avgAgricultureStress > 0.58) judgement = "농업 공급 충격";
-      if (avgEnergyStress > 0.58) judgement = "에너지 비용 충격";
-      if (avgMarketSuccessScore > 0.70 && marketSuccessMonths > 18 && avgMarketFailureRisk < 0.38) judgement = mostFrequentSuccessType === "생산성 개선" ? "생산성 기반 성장" : "시장 기능 개선";
-      if (avgHousingAffordability > 1.65 || housingStressMonths > 18) judgement = "부동산 부담형 둔화";
-      if (avgCommercialVacancy > 18 || avgCommercialReturn < -0.35) judgement = "상업용 부동산 스트레스";
-      if (avgCollateralValueIndex < 90 && avgCreditSupply < 82) judgement = "담보가치 하락형 신용위축";
-      if (stockPanicMonths > 12 || avgFearGreedIndex < 25) judgement = "주식시장 공포형 둔화";
-      if (averageFirmStockVolatility > 10 || stockCorrectionMonths > 18) judgement = "기업 주가 조정 위험";
-      if (highOpacityMonths > 18 || avgInformationUncertainty > 0.50) judgement = "정보 격차형 불안";
-      if (avgValuationPressure > 0.58 || highValuationMonths > 18) judgement = "밸류에이션 부담";
-      if (stockDrawdown > 35 && avgBankHealth < 75) judgement = "주식시장 조정 위험";
-      if (peakBubbleRisk > 0.70 || highBubbleMonths > 18 || ((finalStockIndex > 200 || finalHousingIndex > 200) && average(gdpSeries) < 350)) judgement = "자산시장 과열";
-      if (finalStockIndexPoints > 5000 && avgValuationPressure > 0.45 && average(gdpSeries) < 450) judgement = "주식시장 과열";
-      if (!historicalScenarioKey && avgUnemployment >= 4 && avgUnemployment <= 8 && avgInflation >= 1 && avgInflation <= 3 && avgOutputGap >= -3 && avgOutputGap <= 3 && avgCapacityUtilization >= 70 && avgCapacityUtilization <= 90 && avgFirmStressRatio < 40 && avgHiringFreezeRatio < 25 && avgInventoryDemandRatio < 2.6 && avgHousingAffordability < 1.55 && peakBubbleRisk < 0.60 && avgValuationPressure < 0.50 && stockDrawdown < 25 && avgFinancialConditionIndex < 24 && avgBankHealth > 75 && avgCreditSupply > 78 && avgCreditSpread < 5.5 && avgCreditCrunchRisk < 0.42 && avgCreditExcessRisk < 0.48 && creditCrunchMonths < 8 && creditExcessMonths < 10 && avgBondMarketStress < 0.42 && longRateShockMonths < 8 && avgDepositorConfidence > 0.62 && avgInterbankTrust > 0.62 && avgCreditOfficerCaution < 0.58 && avgConsumerSentiment > 0.52 && avgBusinessSentiment > 0.52 && avgFiscalCredibilitySentiment > 0.50 && avgRecessionFear < 0.52 && avgFearGreedIndex > 28 && avgFearGreedIndex < 74 && avgInformationUncertainty < 0.45 && avgMisperceptionIndex < 0.38 && avgPolicyClarity > 0.50 && avgHiddenVulnerability < 0.45 && avgVatBurden < 0.55 && avgTaxSentimentScore < 0.58 && avgInvestmentConversionRate > 0.22 && avgBuybackPayoutRatio < 0.38 && avgMarketFailureRisk < 0.42 && avgForeignInvestorSentiment > 0.50 && avgForeignBondDemand > 0.50 && avgAgricultureStress < 0.50 && avgEnergyStress < 0.50) judgement = "정상 성장";
-      if (historicalScenarioKey && avgHistoricalScenarioIntensity > 0.25) judgement = historicalScenarioJudgement(historicalScenarioKey);
-      if (peakUnemployment >= 45 || monthsOver40 > 12) judgement = "붕괴 위험";
-
-      const causes = [];
-      if (judgement !== "정상 성장") {
-        if (avgHiringFreezeRatio > 40) causes.push("채용 동결 비율 높음");
-        if (avgFirmStressRatio > 35) causes.push("기업 금융 스트레스 높음");
-        if (avgInventoryDemandRatio > 2.7) causes.push("재고/수요 비율 과다");
-        if (avgConsumption < average(gdpSeries) * 0.35) causes.push("민간 수요 약함");
-        if (avgOutputGap < -5) causes.push("음의 산출갭");
-        if (avgInflationGap < -1) causes.push("목표 이하 물가");
-        if (avgDebtToGdp > 160) causes.push("정부 부채/GDP 높음");
-        if (avgHouseholdDebtBurden > 18) causes.push("가계 부채상환 부담 높음");
-        if (avgFirmDSCR < 1.2) causes.push("기업 DSCR 취약");
-        if (avgFiscalSpace < 0.25) causes.push("재정 여력 제한");
-        if (avgHousingAffordability > 1.65) causes.push("주택구입부담 높음");
-        if (avgCommercialVacancy > 18) causes.push("상업용 공실률 높음");
-        if (avgCollateralValueIndex < 90) causes.push("담보가치 하락");
-        if (peakNegativeEquityRatio > 8) causes.push("음의 자산 가계 증가");
-        if (highOpacityMonths > 12) causes.push("기업 정보 불투명성 높음");
-        if (stockPanicMonths > 12) causes.push("주식시장 공포 확산");
-        if (peakBubbleRisk > 0.65) causes.push("자산 버블 위험 높음");
-        if (avgValuationPressure > 0.55) causes.push("주식 밸류에이션 부담");
-        if (stockDrawdown > 25) causes.push("주가지수 조정폭 큼");
-        if (avgFinancialConditionIndex > 24) causes.push("금융여건 긴축");
-        if (avgCreditSpread > 5.5) causes.push("신용스프레드 확대");
-        if (avgCreditSupply < 72) causes.push("신용공급 위축");
-        if (avgBankHealth < 70) causes.push("은행건전성 약화");
-        if (avgRealPolicyRate > 3) causes.push("실질금리 부담");
-        if (avgMortgageRate > 7) causes.push("주택담보금리 부담");
-        if (invertedCurveMonths > 12) causes.push("장단기 금리차 역전");
-        if (highRateUncertaintyMonths > 12) causes.push("금리 경로 불확실성");
-        if (policySurpriseCount > 8) causes.push("예상 밖 금리 변화");
-        if (avgGovernmentFundingRate > 6) causes.push("정부 평균 조달금리 상승");
-        if (avgBondYield > state.metrics.interestRatePercent + 3.0) causes.push("국채금리 부담");
-        if (avgBondYield30Y > avgBondYield10Y + 1.2) causes.push("장기금리 압력");
-        if (avgLongBondPriceIndex < 86) causes.push("장기채 가격 하락");
-        if (avgBondMarketStress > 0.50) causes.push("국채시장 스트레스");
-        if (avgMarketFailureRisk > 0.50) causes.push(`시장 실패 위험(${mostFrequentFailureType})`);
-        if (historicalScenarioKey) causes.push(`역사 시나리오 충격(${historicalScenarioKeyRisk(historicalScenarioKey)})`);
-        if (avgForeignInvestorSentiment < 0.50) causes.push("해외 투자심리 약화");
-        if (avgForeignBondDemand < 0.50) causes.push("해외 채권수요 약화");
-        if (avgAgricultureStress > 0.55) causes.push("농업 공급 스트레스");
-        if (avgEnergyStress > 0.55) causes.push("에너지 비용 스트레스");
-        if (avgDepositorConfidence < 0.62) causes.push("예금자 신뢰 약화");
-        if (avgInterbankTrust < 0.62) causes.push("은행 간 신뢰 약화");
-        if (avgCreditOfficerCaution > 0.58) causes.push("여신심사 보수화");
-        if (avgCreditCrunchRisk > 0.48 || creditCrunchMonths > 8) causes.push("신용경색 위험 누적");
-        if (avgCreditExcessRisk > 0.50 || creditExcessMonths > 12) causes.push("신용 과다 누적");
-        if (avgUnderwritingQuality < 0.58) causes.push("인수심사 품질 약화");
-        if (avgSafeHavenDemand > 55) causes.push("안전자산 선호 높음");
-        if (avgConsumerSentiment < 0.48) causes.push("소비심리 위축");
-        if (avgBusinessSentiment < 0.48) causes.push("기업심리 위축");
-        if (avgRecessionFear > 0.55) causes.push("경기침체 우려 높음");
-        if (avgFearGreedIndex < 30) causes.push("주식 공포심리 높음");
-        if (avgFearGreedIndex > 75) causes.push("탐욕 심리 과열");
-        if (avgInformationUncertainty > 0.45) causes.push("정보 불확실성 높음");
-        if (avgRumorIntensity > 0.25) causes.push("루머 강도 높음");
-        if (avgMisperceptionIndex > 0.40) causes.push("오인식 지수 높음");
-        if (avgPolicyClarity < 0.50) causes.push("정책 명확성 낮음");
-        if (avgRealEstateBelief > 0.68) causes.push("부동산 불패 믿음 강함");
-        if (avgStockBelief > 0.68) causes.push("주식 불패 믿음 강함");
-        if (avgHerdIntensity > 0.62) causes.push("군중심리 과열");
-        if (avgFomoIntensity > 0.62) causes.push("FOMO 높음");
-        if (avgBehaviorMispricing > 0.60) causes.push("가치-가격 괴리");
-        if (beliefBreakdownMonths > 8) causes.push("믿음 붕괴 위험");
-        if (avgFiscalCredibilitySentiment < 0.45) causes.push("재정 신뢰도 약화");
-        if (avgSentimentInflationExpectations > TARGET_INFLATION + 1.4) causes.push("기대인플레이션 불안");
-        if (avgLowIncomeConsumptionCapacity < 0.75) causes.push("저소득층 소비여력 약화");
-        if (avgMiddleClassHousingBurden > 14) causes.push("중산층 주거부담 높음");
-        if (lowIncomeStressMonths > 12) causes.push("저소득층 스트레스 지속");
-        if (middleMortgageStressMonths > 12) causes.push("중산층 주담대 스트레스 지속");
-        if (avgClassSentimentGap > 0.34) causes.push("계층별 심리 격차 확대");
-        if (avgHiddenVulnerability > 0.55) causes.push("숨은 취약성 누적");
-        if (avgHouseholdVulnerability > 0.55) causes.push("가계 취약성 높음");
-        if (avgFirmVulnerability > 0.55) causes.push("기업 취약성 높음");
-        if (avgBankVulnerability > 0.55) causes.push("은행 취약성 높음");
-        if (avgHousingVulnerability > 0.55) causes.push("주택 취약성 높음");
-        if (avgExternalVulnerability > 0.55) causes.push("대외 취약성 높음");
-        if (wealthInequalityRisingMonths > 12) causes.push("자산불평등 상승 지속");
-        if (avgWealthInequality > 0.55) causes.push("자산불평등 확대");
-        if (avgImportPriceInflation > 10) causes.push("수입물가 상승");
-        if (avgCommodityPressure > 1.5) causes.push("원자재·에너지 비용 압력");
-        if (avgCentralBankCredibility < 0.50) causes.push("중앙은행 신뢰도 약화");
-        if (avgZombieFirmRatio > 12) causes.push("좀비기업 비중 높음");
-        if (avgDistressedFirmRatio > 18) causes.push("취약기업 비율 높음");
-        if (avgSocialStressIndex > 0.55) causes.push("사회적 압력 상승");
-        if (avgVatBurden > 0.55) causes.push("부가세 체감 부담 높음");
-        if (avgCorporateTaxPressure > 0.60) causes.push("법인세 부담 높음");
-        if (avgInvestmentConversionRate < 0.24) causes.push("세후현금 투자 전환율 낮음");
-        if (avgBuybackPayoutRatio > 0.34) causes.push("자사주·배당 우선 배분");
-        if (avgTaxSentimentScore > 0.62) causes.push("세금 체감 심리 악화");
-      }
-      const policyStance = avgPolicyGap > 2 ? "긴축 우위" : avgPolicyGap < -2 ? "완화 우위" : "중립 근처";
-      const interpretation = judgement === "재고 과잉형 안정"
-        ? "실업률은 낮지만 재고/수요 비율이 높아 기업 수익성이 압박받을 수 있습니다."
-        : judgement === "기업 금융 스트레스형 안정"
-          ? "거시지표는 안정적으로 보이나 기업 부채와 채용 제약이 회복력을 낮춥니다."
-          : judgement === "재정 여력 제한"
-            ? "정부 부채와 이자비용이 재정정책의 여지를 좁히고 있습니다."
-          : judgement === "가계 부채 부담형 둔화"
-            ? "가계 부채상환 부담이 소비 회복 속도를 낮추고 있습니다."
-          : judgement === "기업 부채 부담형 둔화"
-            ? "기업 현금흐름 대비 부채상환 부담이 투자와 고용을 제약합니다."
-          : judgement === "세금 부담형 둔화"
-            ? "세수는 늘지만 가처분소득과 순이익 감소가 민간 수요를 약화시킵니다."
-          : judgement === "부동산 부담형 둔화"
-            ? "부동산 가격과 금리 부담이 가계의 주거비 부담을 높이고 소비 여력을 낮춥니다."
-          : judgement === "상업용 부동산 스트레스"
-            ? "상업용 공실률과 가격 조정이 기업 담보가치와 은행 건전성을 압박하고 있습니다."
-          : judgement === "담보가치 하락형 신용위축"
-            ? "부동산 담보가치 하락이 은행 위험선호를 낮추고 신용공급을 위축시키고 있습니다."
-          : judgement === "주식시장 공포형 둔화"
-            ? "기업 주가와 광역 주가지수의 조정이 투자심리와 자금조달 여건을 약화시키고 있습니다."
-          : judgement === "기업 주가 조정 위험"
-            ? "개별 기업 주가 변동성이 높아져 투자와 고용 계획이 더 조심스러워질 수 있습니다."
-          : judgement === "자산시장 과열"
-            ? "자산가격이 실물 성장보다 빠르게 올라 금융취약성과 조정 위험이 커지고 있습니다."
-          : judgement === "주식시장 과열"
-            ? "주가지수가 기업 이익과 GDP보다 빠르게 상승해 향후 조정 위험이 커지고 있습니다."
-          : judgement === "주식시장 조정 위험"
-            ? "주가지수 하락폭이 커지고 은행 건전성도 약해져 위험회피가 확산될 수 있습니다."
-          : judgement === "밸류에이션 부담"
-            ? "주가가 기업 이익보다 빠르게 올라 밸류에이션 부담이 누적되고 있습니다."
-          : judgement === "금융여건 긴축"
-            ? "금리, 부채, 자산가격 조정이 결합되어 소비와 투자의 금융여건을 조이고 있습니다."
-          : judgement === "실질금리 부담"
-            ? "기대물가를 감안한 실질금리가 높아 기업 투자와 주택수요가 둔화되고 있습니다."
-          : judgement === "주택담보 부담형 둔화"
-            ? "10년 금리와 주택담보금리 상승이 중산층 주거부담과 주택수요를 압박합니다."
-          : judgement === "장단기 금리차 역전 위험"
-            ? "단기금리가 장기금리보다 높아 시장이 향후 경기 둔화를 반영하고 있습니다."
-          : judgement === "정책 불확실성 상승"
-            ? "예상보다 큰 금리 변화와 불명확한 경로가 변동성과 투자 지연을 키우고 있습니다."
-          : judgement === "재정 이자비용 부담"
-            ? "장기금리 상승이 정부 평균 조달금리와 이자비용을 높여 재정 여력을 제한합니다."
-          : judgement === "저금리 과열"
-            ? "낮은 실질금리가 자산가격과 차입 수요를 지지해 버블 위험을 키울 수 있습니다."
-          : judgement === "신용경색 위험"
-            ? "예금자 신뢰, 은행 간 신뢰, 여신심사가 함께 약해져 신용공급이 실물투자보다 먼저 위축되고 있습니다."
-          : judgement === "신용 과다 누적"
-            ? "대출태도가 느슨하고 위험이 과소평가되면서 단기 신용공급은 좋지만 부실과 버블 취약성이 누적되고 있습니다."
-          : judgement === "국채시장 스트레스"
-            ? "국채시장 유동성과 장기채 가격이 약해져 장기금리, 정부 조달비용, 주택담보금리에 압력이 생기고 있습니다."
-          : judgement === "은행 심리 위축"
-            ? "은행 건전성 수치보다 예금자 신뢰와 은행 간 신뢰가 먼저 약해져 대출태도가 보수화되고 있습니다."
-          : judgement === "장기금리 충격"
-            ? "30년물 중심의 장기금리 상승이 부동산, 성장기업 밸류에이션, 정부 이자비용을 동시에 압박합니다."
-          : judgement === "안전자산 선호형 긴축"
-            ? "안전자산 선호와 국채시장 변동성이 커지며 위험자산 심리와 신용공급이 함께 긴축되고 있습니다."
-          : judgement === "은행 스트레스 위험"
-            ? "은행 건전성 약화와 부실대출 부담이 신용공급을 위축시킬 수 있습니다."
-          : judgement === "재정금리 부담"
-            ? "국채금리 상승이 정부 이자비용을 높여 재정 여력을 제한하고 있습니다."
-          : judgement === "안전자산 선호 급등"
-            ? "위험회피가 높아져 금·은 등 안전자산 선호가 강해지고 위험투자 심리는 약합니다."
-          : judgement === "신용위축형 침체"
-            ? "신용스프레드와 대출태도 긴축이 기업 투자와 가계 차입을 제약합니다."
-          : judgement === "소비심리 위축"
-            ? "고용과 소득이 버텨도 부채·물가·자산손실 불안이 소비 회복을 늦춥니다."
-          : judgement === "기업심리 위축"
-            ? "기업의 매출 기대와 투자심리가 약해 생산 조절과 채용 지연이 나타날 수 있습니다."
-          : judgement === "위험회피 심화"
-            ? "은행과 시장의 위험선호가 낮아져 신용공급과 위험자산 심리가 동시에 약해졌습니다."
-          : judgement === "공포심리 주도 둔화"
-            ? "기초 지표보다 시장 공포와 변동성이 먼저 악화되어 투자와 소비심리를 누르고 있습니다."
-          : judgement === "탐욕 과열"
-            ? "낮은 금리와 강한 기대가 자산가격을 실물보다 빠르게 밀어 올릴 수 있습니다."
-          : judgement === "부동산 불패 과열"
-            ? "주거비 부담이 커졌지만 부동산 불패 믿음이 수요를 유지해 조정 취약성이 커지고 있습니다."
-          : judgement === "주식 불패 과열"
-            ? "기업 이익보다 주가지수가 빠르게 올라가지만 저가매수 믿음과 FOMO가 가격을 지지합니다."
-          : judgement === "군중심리형 과열"
-            ? "다수의 낙관적 행동이 가격과 수요를 동시에 밀어 올려 기초여건과의 괴리가 커질 수 있습니다."
-          : judgement === "가치-가격 괴리 위험"
-            ? "자산가격이 기초가치보다 높아 정상 지표 아래에서도 조정 위험이 누적됩니다."
-          : judgement === "믿음 붕괴 위험"
-            ? "손실회피와 패닉 압력이 커져 기존 불패 믿음이 빠르게 약해질 수 있습니다."
-          : judgement === "정보 격차형 버블"
-            ? "정보 불확실성과 확증편향이 위험 신호를 늦게 반영하게 만들어 버블이 오래 지속될 수 있습니다."
-          : judgement === "정보 격차형 불안"
-            ? "경제 주체의 인식과 실제 지표 사이의 차이가 커져 정책 전달과 시장 반응이 불안정합니다."
-          : judgement === "루머 주도 신용위축"
-            ? "루머와 불확실성이 실제 부실보다 먼저 신용스프레드와 대출태도를 긴축시키고 있습니다."
-          : judgement === "기대인플레이션 불안"
-            ? "기대물가가 목표보다 높아 임금·가격 결정에 상방 압력이 남아 있습니다."
-          : judgement === "재정 신뢰도 약화"
-            ? "부채와 금리 부담이 재정 신뢰를 낮춰 정책 효과를 약화시킬 수 있습니다."
-          : judgement === "심리 위축형 둔화"
-            ? "경기침체 우려가 소비와 투자 결정을 지연시키며 회복 속도를 낮춥니다."
-          : judgement === "계층별 소비 양극화"
-            ? "헤드라인 성장은 유지되어도 저소득층 소비여력과 자산불평등이 벌어져 수요 기반이 약해집니다."
-          : judgement === "저소득층 물가 부담"
-            ? "저소득층은 물가와 임대료 충격을 먼저 체감해 실질소비가 약해지고 있습니다."
-          : judgement === "중산층 주거비 부담"
-            ? "중산층은 주택담보금리와 주거비 부담에 민감해 내수 둔화 위험이 커지고 있습니다."
-          : judgement === "자산효과 편중"
-            ? "자산가격 상승의 심리 개선 효과가 자산가에 집중되어 계층별 체감경기 격차가 커지고 있습니다."
-          : judgement === "주거비 부담형 둔화"
-            ? "중산층 주택담보와 임대료 부담이 커져 소비가 금리 변화에 민감해지고 있습니다."
-          : judgement === "수입물가 충격"
-            ? "환율 약세와 수입물가 상승이 실질소득을 낮추고 비용발 물가 압력을 키웁니다."
-          : judgement === "원자재 비용 충격"
-            ? "원자재·에너지 가격 상승이 제조업 비용과 소비자 물가를 동시에 압박합니다."
-          : judgement === "중앙은행 신뢰도 약화"
-            ? "정책 신뢰도가 낮아 기대인플레이션이 목표에서 벗어나 물가 안정 비용이 커질 수 있습니다."
-          : judgement === "좀비기업 누적"
-            ? "취약기업이 낮은 금리와 신용완화로 생존하지만 투자와 생산성 회복은 약합니다."
-          : judgement === "산업별 불균형"
-            ? `${mostStressedSector} 스트레스가 높아 총량 지표보다 특정 산업의 조정 압력이 큽니다.`
-          : judgement === "사회적 압력 상승"
-            ? "주거비, 물가, 불평등, 소비심리 약화가 결합되어 정책 지원 요구가 커지고 있습니다."
-          : judgement === "부가세 부담형 소비둔화"
-            ? "부가세가 체감가격을 높여 저소득층 소비여력과 내수 회복력을 먼저 약화시키고 있습니다."
-          : judgement === "법인세 부담형 투자둔화"
-            ? "법인세 부담과 약한 세후이익이 투자 전환율을 낮춰 설비투자와 채용 회복을 제약합니다."
-          : judgement === "자사주 우선 배분"
-            ? "기업이 세후현금을 설비투자보다 자사주·배당·부채상환에 우선 배분해 주가 지지는 가능하지만 실물투자 효과는 제한적입니다."
-          : judgement === "세금 체감 격차 확대"
-            ? "부가세, 소득세, 법인세가 계층과 기업전략별로 다르게 작동해 체감경기 격차가 커지고 있습니다."
-          : judgement === "시장 실패 위험"
-            ? `시장 기능이 약해지는 주된 경로는 ${mostFrequentFailureType}이며, 자원배분과 신용·정보 경로가 실물경제를 왜곡하고 있습니다.`
-          : judgement === "정보 비대칭형 불안"
-            ? "정보 불확실성과 오인식이 커져 위험 신호가 늦게 반영되거나 과잉반응으로 번지고 있습니다."
-          : judgement === "신용 배분 실패"
-            ? "신용이 필요한 곳으로 안정적으로 흐르지 못하거나 위험을 과소평가해 부실 취약성이 누적되고 있습니다."
-          : judgement === "외부비용 충격"
-            ? "에너지·원자재·수입 비용이 가격에 충분히 반영되지 못하면서 물가와 마진 압력이 동시에 커지고 있습니다."
-          : judgement === "해외자본 유출 압력"
-            ? "해외 투자자와 채권자의 수요가 약해져 환율, 장기금리, 금융여건에 동시에 압력이 생기고 있습니다."
-          : judgement === "농업 공급 충격"
-            ? "농업 공급과 식품가격 압력이 저소득층 체감물가를 먼저 악화시키며 소비여력을 낮추고 있습니다."
-          : judgement === "에너지 비용 충격"
-            ? "에너지 가격 상승이 생산비와 수입물가를 높여 제조업 마진과 실질소비를 동시에 압박합니다."
-          : judgement === "생산성 기반 성장"
-            ? "투자 효율과 생산성이 개선되며 물가 안정 속 성장이 나타나는 비교적 건강한 확장 국면입니다."
-          : judgement === "시장 기능 개선"
-            ? `시장 성공 유형은 ${mostFrequentSuccessType}이며, 신용·투자·소비 경로가 비교적 넓게 작동하고 있습니다.`
-          : judgement === "외환위기형 긴축"
-            ? "해외 신뢰 약화와 환율 충격이 고금리·신용경색으로 전이되어 기업과 은행의 조정 압력이 커지는 역사 시나리오입니다."
-          : judgement === "주택담보 신용위기"
-            ? "주택가격과 담보가치 하락이 은행 신뢰와 신용공급을 약화시키며 투자 둔화가 고용보다 먼저 나타나는 역사 시나리오입니다."
-          : judgement === "자산버블 붕괴 위험"
-            ? "낮은 금리와 낙관적 자산 믿음이 신용 과다와 가격 괴리를 누적시켜 향후 조정 취약성이 커지는 역사 시나리오입니다."
-          : judgement === "재정이전형 성장"
-            ? "대규모 이전지출과 건설 수요가 단기 성장을 지지하지만 재정 부담과 생산성 격차를 함께 남기는 역사 시나리오입니다."
-          : judgement === "고물가·환율 불안"
-            ? "환율 약세와 수입물가 상승이 기대인플레이션과 고금리 부담으로 이어져 실질소비를 압박하는 역사 시나리오입니다."
-          : judgement === "수요 부족형 침체"
-            ? "산출갭과 실업갭이 약한 수요를 가리키며 정책 완충이 필요할 수 있습니다."
-            : judgement === "과열 위험"
-              ? "양의 산출갭과 물가 압력이 동시에 나타나 긴축 압력이 커질 수 있습니다."
-              : judgement === "정상 성장"
-                ? "실업, 물가, 기업 스트레스가 기준 범위 안에서 움직입니다."
-                : "핵심 거시지표는 급격히 붕괴하지 않지만 내부 불균형을 계속 점검해야 합니다.";
-
-      els.balanceTestResult.classList.add("visible");
-      els.balanceTestResult.innerHTML = `
-        <strong>판정: ${judgement}</strong>${causes.length ? `<br>주요 요인: ${causes.join(" · ")}` : ""}<br>
-        해석: ${interpretation}<br>
-        ${modelWarnings.length ? `보정 경고: ${modelWarnings.join(" · ")}<br>` : ""}
-        핵심 지표: 최종 실업률 ${percent(final.unemploymentRate, 1)} / 평균 물가 ${signedPercent(avgInflation)} / 최종 GDP ${macroMoney(final.gdp)} / 금융여건 ${round(avgFinancialConditionIndex, 1)} / 신용공급 ${round(avgCreditSupply, 1).toFixed(1)} / 은행건전성 ${round(avgBankHealth, 1).toFixed(1)}<br>
-        <details><summary>전체 결과 보기</summary><div style="margin-top:6px;">
-        최종 실업률 ${percent(final.unemploymentRate, 1)} / 평균 ${percent(avgUnemployment, 1)} / 최고 ${percent(peakUnemployment, 1)}<br>
-        평균 물가 ${signedPercent(avgInflation)} / 최고 물가 ${signedPercent(peakInflation)}<br>
-        평균 산출갭 ${formatSigned(avgOutputGap, 1)}%p / 설비가동률 ${percent(avgCapacityUtilization, 1)} / 재고·수요 ${round(avgInventoryDemandRatio, 2).toFixed(2)}<br>
-        평균 실업갭 ${formatSigned(avgUnemploymentGap, 1)}%p / 물가갭 ${formatSigned(avgInflationGap, 1)}%p / 실질임금증가 ${formatSigned(avgRealWageGrowth, 1)}%p<br>
-        최종 GDP ${macroMoney(final.gdp)} / 최저 GDP ${macroMoney(lowestGdp)}<br>
-        실업 20% 초과 ${monthsOver20}개월 / 40% 초과 ${monthsOver40}개월<br>
-        금융여건지수 ${round(avgFinancialConditionIndex, 1)} / 소비심리 ${round(avgConsumerConfidence, 2)} / 기업전망 ${round(avgFirmConfidence, 2)}<br>
-        심리평균: 소비 ${round(avgConsumerSentiment, 2)} / 기업 ${round(avgBusinessSentiment, 2)} / 은행 위험선호 ${round(avgBankRiskAppetite, 2)} / 시장심리 ${round(avgMarketRiskSentiment, 2)}<br>
-        시장심리: 공포·탐욕 ${round(avgFearGreedIndex, 1)} / 공포지수 ${round(avgStockVolatilityIndex, 1)} / 극단 공포 ${extremeFearMonths}개월 / 극단 탐욕 ${extremeGreedMonths}개월<br>
-        정보격차: 불확실성 ${percent(avgInformationUncertainty * 100, 0)} / 루머 ${percent(avgRumorIntensity * 100, 0)} / 오인식 ${percent(avgMisperceptionIndex * 100, 0)} / 정책명확성 ${percent(avgPolicyClarity * 100, 0)} / 기대오차 ${percent(avgExpectationError * 100, 0)}<br>
-        행동경제: 부동산 불패 ${percent(avgRealEstateBelief * 100, 0)} / 주식 불패 ${percent(avgStockBelief * 100, 0)} / 군중심리 ${percent(avgHerdIntensity * 100, 0)} / FOMO ${percent(avgFomoIntensity * 100, 0)} / 확증편향 ${percent(avgConfirmationBias * 100, 0)}<br>
-        괴리·믿음: 가치-가격 괴리 ${percent(avgBehaviorMispricing * 100, 0)} / 주택 괴리 ${highHousingMispricingMonths}개월 / 주식 괴리 ${highStockMispricingMonths}개월 / 믿음 붕괴 위험 ${beliefBreakdownMonths}개월<br>
-        기대물가 ${signedPercent(avgSentimentInflationExpectations)} / 침체우려 ${percent(avgRecessionFear * 100, 0)} / 재정신뢰 ${percent(avgFiscalCredibilitySentiment * 100, 0)}<br>
-        약한 소비심리 ${weakConsumerSentimentMonths}개월 / 약한 기업심리 ${weakBusinessSentimentMonths}개월 / 높은 침체우려 ${highRecessionFearMonths}개월<br>
-        평균 기업 스트레스 ${percent(avgFirmStressRatio, 1)} / 평균 기업 DSCR ${round(avgFirmDSCR, 2).toFixed(2)} / 가계 부채부담 ${percent(avgHouseholdDebtBurden, 1)}<br>
-        평균 정부 부채/GDP ${percent(avgDebtToGdp, 1)} / 최고 ${percent(peakDebtToGdp, 1)} / 재정 여력 ${percent(avgFiscalSpace * 100, 0)}<br>
-        주가지수 ${formatIndexPoint(finalStockIndexPoints)} / 저점 ${formatIndexPoint(lowestStockIndexPoints)} / 고점 ${formatIndexPoint(highestStockIndexPoints)} / 월평균 ${formatStockReturn(avgStockReturn / 100)}<br>
-        주식 최대낙폭 ${percent(stockDrawdown, 1)} / 기업주식 월평균 ${signedPercent(avgFirmStockReturn)} / 기업주식 변동성 ${percent(averageFirmStockVolatility, 1)} / 10% 이상 조정 ${stockCorrectionMonths}개월<br>
-        주식 공포 ${stockPanicMonths}개월 / 밸류에이션 부담 ${highValuationMonths}개월 / 정보 불투명 ${highOpacityMonths}개월<br>
-        주거용 부동산 ${round(finalHousingIndex, 1).toFixed(1)} / 평균 수익률 ${signedPercent(avgResidentialReturn)} / 상업용 수익률 ${signedPercent(avgCommercialReturn)} / 자산효과 ${signedPercent(avgWealthEffect)}<br>
-        상업용 공실률 ${percent(avgCommercialVacancy, 1)} / 담보가치 ${round(avgCollateralValueIndex, 1).toFixed(1)} / 음의 자산 최고 ${percent(peakNegativeEquityRatio, 1)} / 부동산 스트레스 ${realEstateStressMonths}개월<br>
-        버블위험 최고 ${percent(peakBubbleRisk * 100, 0)} / 주택부담 경고 ${housingStressMonths}개월 / 버블위험 경고 ${highBubbleMonths}개월<br>
-        평균 국채금리 ${percent(avgBondYield, 2)} / 신용스프레드 ${round(avgCreditSpread, 2).toFixed(2)}%p / 은행건전성 ${round(avgBankHealth, 1).toFixed(1)}<br>
-        금리 구조: 정책 ${percent(avgPolicyRate, 2)} / 대출 ${percent(avgLoanRate, 2)} / 주담대 ${percent(avgMortgageRate, 2)} / 예금 ${percent(avgDepositRate, 2)} / 실질정책 ${formatSigned(avgRealPolicyRate, 2)}%p<br>
-        수익률곡선: 3개월 ${percent(avgTreasuryBill3M, 2)} / 5년 ${percent(avgBondYield5Y, 2)} / 10년 ${percent(avgBondYield10Y, 2)} / 30년 ${percent(avgBondYield30Y, 2)} / 장단기 금리차 ${formatSigned(avgTermSpread, 2)}%p<br>
-        국채시장: 장기채 가격 ${round(avgLongBondPriceIndex, 1).toFixed(1)} / 스트레스 ${percent(avgBondMarketStress * 100, 0)} / 장기금리 충격 ${longRateShockMonths}개월 / 역전 ${invertedCurveMonths}개월 / 금리 불확실성 ${highRateUncertaintyMonths}개월 / 정책 서프라이즈 ${policySurpriseCount}회<br>
-        부채·재정 금리: 부채상환 부담 ${percent(avgDebtServiceBurdenRate, 1)} / 정부 평균 조달금리 ${percent(avgGovernmentFundingRate, 2)}<br>
-        신용공급 ${round(avgCreditSupply, 1).toFixed(1)} / 대출수요 ${round(avgLoanDemandIndex, 1).toFixed(1)} / 은행스트레스 최고 ${percent(peakBankStress * 100, 0)} / 은행위기 경고 ${bankingCrisisMonths}개월<br>
-        은행 심리: 예금자 신뢰 ${percent(avgDepositorConfidence * 100, 0)} / 은행 간 신뢰 ${percent(avgInterbankTrust * 100, 0)} / 여신심사 보수성 ${percent(avgCreditOfficerCaution * 100, 0)}<br>
-        신용 사이클: 신용갭 ${formatSigned(avgCreditGap * 100, 1)}%p / 심사품질 ${percent(avgUnderwritingQuality * 100, 0)} / 신용경색 ${creditCrunchMonths}개월 / 신용과다 ${creditExcessMonths}개월<br>
-        안전자산 선호 ${percent(avgSafeHavenDemand, 1)} / 금 ${round(finalGoldIndex, 1).toFixed(1)} / 은 ${round(finalSilverIndex, 1).toFixed(1)}<br>
-        계층: 저소득 소비여력 ${round(avgLowIncomeConsumptionCapacity, 2).toFixed(2)} / 중산층 주거부담 ${percent(avgMiddleClassHousingBurden, 1)} / 고소득 자산효과 ${signedPercent(avgHighIncomeAssetEffect)} / 자산가 자산효과 ${signedPercent(avgWealthyAssetEffect)}<br>
-        계층 스트레스: 심리격차 ${percent(avgClassSentimentGap * 100, 0)} / 저소득 스트레스 ${lowIncomeStressMonths}개월 / 중산층 주담대 스트레스 ${middleMortgageStressMonths}개월 / 자산불평등 상승 ${wealthInequalityRisingMonths}개월<br>
-        세금 체감: 부가세 부담 ${percent(avgVatBurden * 100, 0)} / 가계 세부담 ${percent(avgHouseholdTaxPressure * 100, 0)} / 법인세 압박 ${percent(avgCorporateTaxPressure * 100, 0)} / 세금심리 ${percent(avgTaxSentimentScore * 100, 0)}<br>
-        세수 구성: 소득세 ${percent(householdTaxShare, 1)} / 법인세 ${percent(corporateTaxShare, 1)} / 부가세 ${percent(vatTaxShare, 1)}<br>
-        세후현금 배분: 자사주·배당 ${macroMoney(avgBuybackDividendSpending)} / 부채상환 ${macroMoney(avgDebtRepaymentAllocation)} / 유보·투자재원 ${macroMoney(avgRetainedEarningsAllocation)} / 투자전환율 ${percent(avgInvestmentConversionRate * 100, 1)} / 주주환원비율 ${percent(avgBuybackPayoutRatio * 100, 1)}<br>
-        숨은 취약성: 종합 ${percent(avgHiddenVulnerability * 100, 0)} / 가계 ${percent(avgHouseholdVulnerability * 100, 0)} / 기업 ${percent(avgFirmVulnerability * 100, 0)} / 은행 ${percent(avgBankVulnerability * 100, 0)} / 주택 ${percent(avgHousingVulnerability * 100, 0)} / 취약 경고 ${hiddenVulnerabilityMonths}개월<br>
-        자산불평등 ${round(avgWealthInequality, 2).toFixed(2)} / 사회적 압력 ${percent(avgSocialStressIndex * 100, 0)}<br>
-        대외: 환율지수 ${round(avgExchangeRateIndex, 1).toFixed(1)} / 수입물가 상승 ${formatSigned(avgImportPriceInflation, 1)}%p / 원자재 압력 ${formatSigned(avgCommodityPressure, 1)}%p<br>
-        외국 주체: 해외 투자심리 ${percent(avgForeignInvestorSentiment * 100, 0)} / 해외 채권수요 ${percent(avgForeignBondDemand * 100, 0)} / 수출수요 ${round(avgExportConsumerDemand, 1).toFixed(1)}<br>
-        시장 평가: 실패위험 ${percent(avgMarketFailureRisk * 100, 0)} / 성공점수 ${percent(avgMarketSuccessScore * 100, 0)} / 실패유형 ${mostFrequentFailureType} / 성공유형 ${mostFrequentSuccessType} / 실패경고 ${marketFailureWarningMonths}개월 / 성공 ${marketSuccessMonths}개월<br>
-        역사 시나리오: ${escapeHtml(historicalScenarioLabel)} / 대표 단계 ${escapeHtml(historicalScenarioPhase)} / 충격강도 ${percent(avgHistoricalScenarioIntensity * 100, 0)} / 진행·잔류 ${historicalActiveMonths}개월<br>
-        산업 세분화: 농업 스트레스 ${percent(avgAgricultureStress * 100, 0)} / 에너지산업 스트레스 ${percent(avgEnergyStress * 100, 0)}<br>
-        정책 신뢰: 중앙은행 ${percent(avgCentralBankCredibility * 100, 0)} / 기대이탈 ${deAnchoredInflationMonths}개월 / 최대 스트레스 산업 ${mostStressedSector}<br>
-        기업 신용: 좀비기업 ${percent(avgZombieFirmRatio, 1)} / 취약기업 ${percent(avgDistressedFirmRatio, 1)} / 건설 스트레스 ${percent(avgConstructionStress * 100, 0)} / 제조 스트레스 ${percent(avgManufacturingStress * 100, 0)}<br>
-        부채 스트레스 경고 ${debtStressWarningMonths}개월 / 정책 기조 ${policyStance}
-        </div></details>
-      `;
     }
 
     function updatePolicyImpactPanel() {
@@ -9403,11 +7381,7 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
     }
 
     function safeRenderSimulation(timestamp) {
-      try {
-        renderSimulation(timestamp);
-      } catch (error) {
-        recordRuntimeError(error, "렌더링 오류", "캔버스 렌더링 오류를 건너뛰었습니다.");
-      }
+      safeRenderSimulationPanel(createCanvasContext(), timestamp);
     }
 
     function safeUpdateBalanceDiagnostics() {
@@ -9504,491 +7478,49 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
     }
 
     // ===== 렌더링 =====
-    // 캔버스에는 소비자, 생산자, 정부 노드와 최근 거래 흐름을 가볍게 애니메이션으로 그린다.
-    function renderSimulation(timestamp) {
-      syncUiPerformanceState();
-      if (state.ui) state.ui.lastCanvasRenderTick = state.tick;
-      const canvas = els.simCanvas;
-      const rect = canvas.getBoundingClientRect();
-      const ratio = window.devicePixelRatio || 1;
-      const width = Math.max(320, rect.width);
-      const height = Math.max(260, rect.height);
-
-      if (canvas.width !== Math.round(width * ratio) || canvas.height !== Math.round(height * ratio)) {
-        canvas.width = Math.round(width * ratio);
-        canvas.height = Math.round(height * ratio);
-        if (state.ui) state.ui.canvasPositionCacheKey = "";
-      }
-
-      const ctx = canvas.getContext("2d");
-      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-      ctx.clearRect(0, 0, width, height);
-
-      drawCanvasBackdrop(ctx, width, height);
-      const positionCacheKey = getCanvasPositionCacheKey(width, height, ratio);
-      if (!state.ui || state.ui.canvasPositionCacheKey !== positionCacheKey) {
-        computeNodePositions(width, height);
-        if (state.ui) state.ui.canvasPositionCacheKey = positionCacheKey;
-      }
-      drawFlows(ctx, timestamp);
-      drawGovernment(ctx);
-      drawProducers(ctx);
-      drawConsumers(ctx);
-      drawCanvasLabels(ctx, width, height);
-    }
-
-    function drawCanvasBackdrop(ctx, width, height) {
-      const gradient = ctx.createLinearGradient(0, 0, width, height);
-      gradient.addColorStop(0, "rgba(255, 250, 240, 0.72)");
-      gradient.addColorStop(1, "rgba(231, 242, 228, 0.78)");
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, width, height);
-
-      ctx.save();
-      ctx.fillStyle = "rgba(107, 181, 142, 0.10)";
-      roundedRect(ctx, 14, 86, width * 0.48, height - 114, 18);
-      ctx.fill();
-      ctx.fillStyle = "rgba(64, 124, 168, 0.10)";
-      roundedRect(ctx, width * 0.58, 86, width * 0.39, height - 114, 18);
-      ctx.fill();
-      ctx.fillStyle = "rgba(216, 137, 49, 0.12)";
-      roundedRect(ctx, width * 0.38, 16, width * 0.24, 70, 20);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(22, 48, 46, 0.10)";
-      ctx.lineWidth = 1;
-      roundedRect(ctx, 14, 86, width * 0.48, height - 114, 18);
-      ctx.stroke();
-      roundedRect(ctx, width * 0.58, 86, width * 0.39, height - 114, 18);
-      ctx.stroke();
-      roundedRect(ctx, width * 0.38, 16, width * 0.24, 70, 20);
-      ctx.stroke();
-      ctx.restore();
-
-      ctx.save();
-      ctx.globalAlpha = 0.08;
-      ctx.fillStyle = "#16302e";
-      ctx.font = "900 34px Pretendard, sans-serif";
-      ctx.textAlign = "left";
-      ctx.fillText("가계", 34, height - 52);
-      ctx.textAlign = "right";
-      ctx.fillText("기업", width - 34, height - 52);
-      ctx.textAlign = "center";
-      ctx.fillText("정부", width / 2, 72);
-      ctx.restore();
-    }
-
-    function computeNodePositions(width, height) {
-      state.positions.consumers = [];
-      state.positions.producers = [];
-      state.positions.government = { x: width * 0.50, y: 54, r: 28 };
-
-      const consumerAreaWidth = width * 0.47;
-      const consumerTop = 110;
-      const consumerBottom = height - 28;
-      const consumerRows = Math.max(2, Math.floor((consumerBottom - consumerTop) / 24));
-      const consumerCols = Math.max(1, Math.ceil(state.consumers.length / consumerRows));
-      const consumerSpacingX = Math.min(24, (consumerAreaWidth - 42) / Math.max(1, consumerCols));
-      const consumerSpacingY = Math.min(24, (consumerBottom - consumerTop) / Math.max(1, consumerRows - 1));
-
-      state.consumers.forEach((consumer, index) => {
-        const col = Math.floor(index / consumerRows);
-        const row = index % consumerRows;
-        state.positions.consumers[consumer.id] = {
-          x: 30 + col * consumerSpacingX + (row % 2) * 3,
-          y: consumerTop + row * consumerSpacingY,
-          r: clamp(4.3 + consumer.cash / 700, 4.5, 8.2)
-        };
-      });
-
-      const producerCols = Math.min(3, Math.max(1, Math.ceil(Math.sqrt(state.producers.length))));
-      const producerRows = Math.ceil(state.producers.length / producerCols);
-      const startX = width * 0.62;
-      const startY = 128;
-      const areaW = width * 0.34;
-      const areaH = height - 166;
-      const gapX = areaW / Math.max(1, producerCols);
-      const gapY = areaH / Math.max(1, producerRows);
-
-      state.producers.forEach((producer, index) => {
-        const col = index % producerCols;
-        const row = Math.floor(index / producerCols);
-        state.positions.producers[producer.id] = {
-          x: startX + col * gapX + gapX * 0.5 + producer.layoutJitterX,
-          y: startY + row * gapY + gapY * 0.45 + producer.layoutJitterY,
-          w: clamp(54 + producer.productionCapacity * 0.6, 58, 94),
-          h: 38
-        };
-      });
-    }
-
-    function drawGovernment(ctx) {
-      const gov = state.positions.government;
-      const active = (state.selected && state.selected.type === "government") || (state.hovered && state.hovered.type === "government");
-      const scale = state.selected && state.selected.type === "government" ? 1.2 : active ? 1.08 : 1;
-      const w = 116 * scale;
-      const h = 54 * scale;
-      ctx.save();
-      ctx.shadowColor = active ? "rgba(216, 137, 49, 0.48)" : "rgba(216, 137, 49, 0.28)";
-      ctx.shadowBlur = state.selected && state.selected.type === "government" ? 32 : active ? 24 : 14;
-      ctx.fillStyle = "#d88931";
-      roundedRect(ctx, gov.x - w / 2, gov.y - h / 2, w, h, 18);
-      ctx.fill();
-      ctx.shadowBlur = 0;
-      if (active) {
-        ctx.strokeStyle = "#fff4c8";
-        ctx.lineWidth = scale > 1.1 ? 4 : 3;
-        roundedRect(ctx, gov.x - w / 2, gov.y - h / 2, w, h, 18);
-        ctx.stroke();
-      }
-      ctx.fillStyle = "#fffaf0";
-      ctx.font = "800 13px Pretendard, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("정부", gov.x, gov.y - 2);
-      ctx.font = "700 10px Pretendard, sans-serif";
-      ctx.fillText(`수지 ${compactMoney(state.government.balance || 0)}`, gov.x, gov.y + 15);
-      ctx.restore();
-    }
-
-    function drawProducers(ctx) {
-      const maxRenderedProducers = isLargeEconomyMode() ? 36 : state.config.performanceMode === "light" ? 28 : 80;
-      const step = Math.max(1, Math.ceil(state.producers.length / maxRenderedProducers));
-      state.producers.forEach((producer) => {
-        const pos = state.positions.producers[producer.id];
-        if (!pos) return;
-
-        const inventoryPressure = clamp(producer.inventory / Math.max(1, producer.expectedDemand * 2), 0, 2);
-        const fill = inventoryPressure < 0.7 ? "#c85f32" : inventoryPressure > 1.45 ? "#407ca8" : "#247173";
-        const selected = state.selected && state.selected.type === "producer" && state.selected.id === producer.id;
-        const hovered = state.hovered && state.hovered.type === "producer" && state.hovered.id === producer.id;
-        if (!selected && !hovered && producer.id % step !== 0) return;
-
-        const producerWidth = clamp(54 + producer.productionCapacity * 0.6, 58, 94);
-        const producerHeight = 38;
-        const scale = selected ? 1.2 : hovered ? 1.08 : 1;
-        ctx.save();
-        ctx.shadowColor = selected || hovered ? "rgba(200, 95, 50, 0.38)" : "rgba(22, 48, 46, 0.18)";
-        ctx.shadowBlur = selected ? 28 : hovered ? 20 : 10;
-        ctx.fillStyle = fill;
-        roundedRect(ctx, pos.x - (producerWidth * scale) / 2, pos.y - (producerHeight * scale) / 2, producerWidth * scale, producerHeight * scale, 10);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.strokeStyle = selected || hovered ? "#fff4c8" : "rgba(255, 250, 240, 0.42)";
-        ctx.lineWidth = selected ? 4 : hovered ? 3 : 1.5;
-        roundedRect(ctx, pos.x - (producerWidth * scale) / 2, pos.y - (producerHeight * scale) / 2, producerWidth * scale, producerHeight * scale, 10);
-        ctx.stroke();
-        ctx.fillStyle = "#fffaf0";
-        ctx.font = "800 11px Pretendard, sans-serif";
-        ctx.textAlign = "center";
-        ctx.fillText(`기업 ${producer.id + 1}`, pos.x, pos.y - 5);
-        ctx.font = "700 9px Pretendard, sans-serif";
-        ctx.fillText(`${money(producer.price, 1)} · ${producer.employees.length}명`, pos.x, pos.y + 10);
-        ctx.restore();
-      });
-    }
-
-    function drawConsumers(ctx) {
-      const maxRenderedConsumers = isLargeEconomyMode() ? 48 : state.config.performanceMode === "light" ? 36 : 64;
-      const step = Math.max(1, Math.ceil(state.consumers.length / maxRenderedConsumers));
-      state.consumers.forEach((consumer) => {
-        const pos = state.positions.consumers[consumer.id];
-        if (!pos) return;
-
-        const selected = state.selected && state.selected.type === "consumer" && state.selected.id === consumer.id;
-        const hovered = state.hovered && state.hovered.type === "consumer" && state.hovered.id === consumer.id;
-        if (!selected && !hovered && consumer.id % step !== 0) return;
-        const baseRadius = clamp(4.3 + consumer.cash / 700, 4.5, 8.2);
-        const radius = selected ? baseRadius * 1.2 + 3 : hovered ? baseRadius * 1.08 + 2 : baseRadius;
-        ctx.save();
-        if (selected || hovered) {
-          ctx.shadowColor = selected ? "rgba(255, 244, 200, 0.72)" : "rgba(216, 137, 49, 0.42)";
-          ctx.shadowBlur = selected ? 18 : 12;
+    function createCanvasContext() {
+      return {
+        state,
+        els,
+        windowRef: window,
+        helpers: {
+          clamp,
+          compactMoney,
+          getCanvasPositionCacheKey,
+          isLargeEconomyMode,
+          money,
+          percent,
+          quadraticPoint,
+          round,
+          roundedRect,
+          safeNumber,
+          syncUiPerformanceState
+        },
+        callbacks: {
+          recordRuntimeError,
+          updateInspector
         }
-        ctx.beginPath();
-        ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = consumer.employed ? "#6bb58e" : "#c85f32";
-        ctx.globalAlpha = clamp(consumer.confidence, 0.38, 1);
-        ctx.fill();
-        ctx.globalAlpha = 1;
-        ctx.strokeStyle = selected || hovered ? "#fff4c8" : "rgba(22, 48, 46, 0.18)";
-        ctx.lineWidth = selected ? 4 : hovered ? 3 : 1;
-        ctx.stroke();
-        ctx.restore();
-      });
+      };
     }
 
-    function drawFlows(ctx, timestamp) {
-      state.flows = state.flows.filter((flow) => timestamp - flow.born < flow.life);
-
-      const maxRenderedFlows = isLargeEconomyMode() ? 8 : state.config.performanceMode === "light" ? 6 : 20;
-      [...state.flows].sort((a, b) => b.amount - a.amount).slice(0, maxRenderedFlows).forEach((flow) => {
-        const from = getNodePosition(flow.fromType, flow.fromId);
-        const to = getNodePosition(flow.toType, flow.toId);
-        if (!from || !to) return;
-
-        const age = (timestamp - flow.born) / flow.life;
-        const alpha = Math.pow(clamp(1 - age, 0, 1), 2.1);
-        const color = flowColor(flow.kind);
-        const curve = flow.kind === "investment" ? 16 : 38;
-        const midX = (from.x + to.x) / 2;
-        const midY = (from.y + to.y) / 2 - curve;
-
-        ctx.save();
-        ctx.globalAlpha = alpha * 0.45;
-        ctx.strokeStyle = color;
-        ctx.lineWidth = clamp(flow.amount / 180, 1, 3.2);
-        ctx.beginPath();
-        ctx.moveTo(from.x, from.y);
-        ctx.quadraticCurveTo(midX, midY, to.x, to.y);
-        ctx.stroke();
-
-        const dot = quadraticPoint(from.x, from.y, midX, midY, to.x, to.y, clamp(age, 0, 1));
-        ctx.globalAlpha = alpha;
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(dot.x, dot.y, clamp(2.4 + flow.amount / 260, 2.4, 5.4), 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      });
-    }
-
-    function drawCanvasLabels(ctx, width, height) {
-      ctx.save();
-      ctx.fillStyle = "rgba(22, 48, 46, 0.68)";
-      ctx.font = "800 12px Pretendard, sans-serif";
-      ctx.textAlign = "left";
-      ctx.fillText(`소비자 구역 · ${state.consumers.length}명 중 대표 노드 표시`, 28, 92);
-      ctx.textAlign = "right";
-      ctx.fillText(`생산자 구역 · ${state.producers.length}개 기업`, width - 28, 92);
-      ctx.textAlign = "center";
-      ctx.fillText("정부 정책 노드", width / 2, 24);
-
-      ctx.fillStyle = "rgba(22, 48, 46, 0.50)";
-      ctx.font = "700 11px Pretendard, sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText("상위 거래 흐름만 표시합니다. 노드에 마우스를 올리면 빠른 요약이 나타납니다.", width / 2, height - 13);
-      ctx.restore();
-    }
-
-    function getNodePosition(type, id) {
-      if (type === "consumer") return state.positions.consumers[id];
-      if (type === "producer") {
-        const pos = state.positions.producers[id];
-        return pos ? { x: pos.x, y: pos.y } : null;
-      }
-      if (type === "government") return state.positions.government;
-      return null;
+    function renderSimulation(timestamp) {
+      renderSimulationPanel(createCanvasContext(), timestamp);
     }
 
     function handleCanvasClick(event) {
-      const rect = els.simCanvas.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-
-      state.selected = findAgentAtPoint(x, y);
-      updateInspector();
-      safeRenderSimulation(performance.now());
+      handleCanvasClickPanel(createCanvasContext(), event);
     }
 
     function handleCanvasHover(event) {
-      const rect = els.simCanvas.getBoundingClientRect();
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-      state.hovered = findAgentAtPoint(x, y);
-
-      if (state.hovered) {
-        showCanvasTooltip(event.clientX - rect.left, event.clientY - rect.top, getAgentTooltip(state.hovered));
-      } else {
-        hideCanvasTooltip();
-      }
-      safeRenderSimulation(performance.now());
-    }
-
-    function findAgentAtPoint(x, y) {
-      let nearest = null;
-      let nearestDistance = Infinity;
-
-      state.positions.consumers.forEach((pos, id) => {
-        if (!pos) return;
-        const consumer = state.consumers[id];
-        const radius = consumer ? clamp(4.3 + consumer.cash / 700, 4.5, 8.2) : pos.r;
-        const distance = Math.hypot(pos.x - x, pos.y - y);
-        if (distance < radius + 18 && distance < nearestDistance) {
-          nearest = { type: "consumer", id };
-          nearestDistance = distance;
-        }
-      });
-
-      state.positions.producers.forEach((pos, id) => {
-        if (!pos) return;
-        const producer = state.producers[id];
-        const width = producer ? clamp(54 + producer.productionCapacity * 0.6, 58, 94) : pos.w;
-        const height = 38;
-        const padding = 16;
-        const inside = x >= pos.x - width / 2 - padding && x <= pos.x + width / 2 + padding && y >= pos.y - height / 2 - padding && y <= pos.y + height / 2 + padding;
-        if (inside) {
-          nearest = { type: "producer", id };
-          nearestDistance = 0;
-        }
-      });
-
-      const gov = state.positions.government;
-      if (Math.abs(x - gov.x) < 74 && Math.abs(y - gov.y) < 44) {
-        nearest = { type: "government", id: 0 };
-      }
-
-      return nearest;
-    }
-
-    function showCanvasTooltip(x, y, html) {
-      els.canvasTooltip.innerHTML = html;
-      els.canvasTooltip.style.left = `${x}px`;
-      els.canvasTooltip.style.top = `${y}px`;
-      els.canvasTooltip.classList.add("visible");
+      handleCanvasHoverPanel(createCanvasContext(), event);
     }
 
     function hideCanvasTooltip() {
-      els.canvasTooltip.classList.remove("visible");
+      hideCanvasTooltipPanel(createCanvasContext());
     }
-
-    function getAgentTooltip(agent) {
-      if (agent.type === "consumer") {
-        const consumer = state.consumers[agent.id];
-        return `<strong>가계 ${agent.id + 1}</strong><br>${consumer.employed ? "고용" : "실업"} · 현금 ${compactMoney(consumer.cash)}<br>심리 ${round(consumer.confidence, 2)}`;
-      }
-      if (agent.type === "producer") {
-        const producer = state.producers[agent.id];
-        return `<strong>기업 ${agent.id + 1}</strong><br>가격 ${money(producer.price, 2)} · 고용 ${producer.employees.length}명<br>재고 ${round(producer.inventory, 1)}`;
-      }
-      return `<strong>정부</strong><br>금리 ${percent(state.government.interestRate * 100, 2)} · 소득세 ${percent(state.government.householdIncomeTaxRate * 100, 1)} · 법인세 ${percent(state.government.corporateTaxRate * 100, 1)} · 부가세 ${percent(safeNumber(state.government.valueAddedTaxRate, 0.10) * 100, 1)}<br>수지 ${compactMoney(state.government.balance)} · 재정여력 ${state.government.fiscalSpaceLabel || "충분함"}`;
-    }
-
-    function flowColor(kind) {
-      if (kind === "wage") return "#2d8f61";
-      if (kind === "tax") return "#c85f32";
-      if (kind === "spending") return "#e5b949";
-      if (kind === "investment") return "#247173";
-      return "#407ca8";
-    }
-
-    function translatePreference(preference) {
-      if (preference === "budget") return "저가 선호";
-      if (preference === "quality") return "품질 선호";
-      return "균형 선호";
-    }
-
-    function money(value, digits = 0) {
-      const safe = safeNumber(value, 0);
-      return `₩${safe.toLocaleString("ko-KR", {
-        maximumFractionDigits: digits,
-        minimumFractionDigits: digits
-      })}`;
-    }
-
     function macroMoney(value, digits = 0) {
       const scale = safeNumber(state.scale?.currencyScale, 1000);
       return money(safeNumber(value, 0) * scale, digits);
-    }
-
-    function compactMoney(value) {
-      const safe = safeNumber(value, 0);
-      const sign = safe < 0 ? "-" : "";
-      const abs = Math.abs(safe);
-      if (abs >= 1000000) return `${sign}₩${round(abs / 1000000, 1)}M`;
-      if (abs >= 1000) return `${sign}₩${round(abs / 1000, 1)}K`;
-      return `${sign}₩${round(abs, 0)}`;
-    }
-
-    function percent(value, digits = 1) {
-      return `${safeNumber(value, 0).toFixed(digits)}%`;
-    }
-
-    function formatSigned(value, digits = 1) {
-      const safe = safeNumber(value, 0);
-      const sign = safe > 0 ? "+" : "";
-      return `${sign}${safe.toFixed(digits)}`;
-    }
-
-    function signedPercent(value) {
-      const safe = safeNumber(value, 0);
-      const sign = safe > 0 ? "+" : "";
-      return `${sign}${safe.toFixed(2)}%`;
-    }
-
-    function formatIndexPoint(value) {
-      return `${Math.round(safeNumber(value, 0)).toLocaleString("ko-KR")}pt`;
-    }
-
-    function formatStockReturn(value) {
-      const safe = safeNumber(value, 0) * 100;
-      const sign = safe > 0 ? "+" : "";
-      return `${sign}${safe.toFixed(1)}%`;
-    }
-
-    function stockVolatilityLabel(value) {
-      const monthlyVolatility = safeNumber(value, 0) * 100;
-      if (monthlyVolatility < 1.5) return "낮음";
-      if (monthlyVolatility < 3.5) return "보통";
-      if (monthlyVolatility < 6.0) return "높음";
-      return "매우 높음";
-    }
-
-    function valuationPressureLabel(value) {
-      const pressure = safeNumber(value, 0);
-      if (pressure < 0.28) return "낮음";
-      if (pressure < 0.58) return "주의";
-      return "높음";
-    }
-
-    function stockRiskSentimentLabel(value) {
-      const sentiment = safeNumber(value, 0.65);
-      if (sentiment >= 0.65) return "안정";
-      if (sentiment >= 0.40) return "주의";
-      return "위험";
-    }
-
-    function fearGreedLabel(value) {
-      const index = safeNumber(value, 50);
-      if (index < 20) return "극단적 공포";
-      if (index < 40) return "공포";
-      if (index < 60) return "중립";
-      if (index < 80) return "탐욕";
-      return "극단적 탐욕";
-    }
-
-    function stockVolatilityIndexLabel(value) {
-      const index = safeNumber(value, 18);
-      if (index < 16) return "낮음";
-      if (index < 30) return "보통";
-      if (index < 48) return "높음";
-      return "공포";
-    }
-
-    function realEstateStressLabel(value) {
-      const stress = safeNumber(value, 0);
-      if (stress < 0.25) return "낮음";
-      if (stress < 0.50) return "주의";
-      if (stress < 0.72) return "높음";
-      return "위험";
-    }
-
-    function housingStatusLabel(value) {
-      const labels = {
-        renter: "임차",
-        lowMortgageOwner: "저부담 자가",
-        highMortgageOwner: "고부담 자가",
-        highAssetOwner: "고자산 자가"
-      };
-      return labels[value] || "주거 상태 미상";
-    }
-
-    function propertyExposureLabel(value) {
-      const labels = {
-        assetLight: "자산 경량",
-        renter: "임차 기업",
-        propertyOwner: "부동산 보유",
-        leveragedProperty: "레버리지 부동산"
-      };
-      return labels[value] || "일반";
     }
 
     function applyEquilibriumGravity() {
