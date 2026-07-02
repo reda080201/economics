@@ -56,6 +56,12 @@ import {
   restoreSimulationSnapshot as restoreSimulationSnapshotRuntime
 } from "./core/simulationRuntime.js";
 import { resetSimulationState } from "./core/resetSimulation.js";
+import {
+  resetTickAccountingEngine,
+  runSimulationStepEngine,
+  safeStepSimulationEngine,
+  stepSimulationEngine
+} from "./core/simulationEngine.js";
 import { calibrateParameters } from "./core/calibration.js";
 import { runBacktest } from "./core/backtest.js";
 import { runMonteCarloScenario } from "./core/monteCarlo.js";
@@ -2153,113 +2159,89 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
 
     // ===== 시뮬레이션 틱 =====
     // 한 단계는 노동시장, 임금 지급, 생산, 정부 지출, 소비, 투자, 가격 조정 순서로 진행된다.
+    // ===== 시뮬레이션 틱 =====
+    // Core engine은 실행 순서만 담당하고, DOM/UI 의존성은 context callback으로 유지한다.
     function stepSimulation() {
-      try {
-        runSimulationStep();
-        return true;
-      } catch (error) {
-        state.running = false;
-        repairSimulationState();
-        safeUpdateAllDisplays();
-        updateRunState();
-        recordRuntimeError(error, "시뮬레이션 오류", "오류가 감지되어 일시정지했습니다.");
-        return false;
-      }
+      return stepSimulationEngine(createSimulationEngineContext());
     }
 
     function safeStepSimulation() {
-      try {
-        return stepSimulation();
-      } catch (error) {
-        state.running = false;
-        repairSimulationState();
-        safeUpdateAllDisplays();
-        updateRunState();
-        recordRuntimeError(error, "시뮬레이션 오류", "오류가 감지되어 일시정지했습니다.");
-        return false;
-      }
+      return safeStepSimulationEngine(createSimulationEngineContext());
     }
 
     function runSimulationStep() {
-      if (state.game.status !== "active" && state.game.mode !== "sandbox") return;
-      if (state.game.activeEvent) return;
-      syncLivePolicy();
-      applyAutomaticPolicyIfEnabled();
-      syncLivePolicy();
-      state.tick += 1;
-      resetTickAccounting();
-      advanceShockClock();
-      advancePolicyTransmission();
-      updateInterestRateStructure();
+      return runSimulationStepEngine(createSimulationEngineContext());
+    }
 
-      updateMacroFinancialTransmission();
-      updatePerceivedEconomy();
-      updateExpectationsSystem();
-      updateSentimentSystem();
-      updateBehavioralSystem();
-      updateExternalSector();
-      updatePolicyCredibility();
-      updateInterestRateStructure();
-      updateFinancialMarkets();
-      updateMacroFinancialTransmission();
-      updatePerceivedEconomy();
-      updateExpectationsSystem();
-      updateSentimentSystem();
-      updateBehavioralSystem();
-      updateExternalSector();
-      updatePolicyCredibility();
-      updateInterestRateStructure();
-      applyInterestEffects();
-      computeDebtStress();
-      propagateFinancialStress();
-      updateWagePriceSpiral();
-      updateLaborMarket();
-      payWages();
-      produceGoods();
-      executeGovernmentSpending();
-      executeConsumerPurchases();
-      executeExternalTrade();
-      executeProducerInvestment();
-      adjustProducerPricesAndExpectations();
-      collectProfitTaxes();
-      updateMacroMetrics();
-      updateExternalSector();
-      updateAssetMarkets();
-      updateFinancialMarkets();
-      updateInterestRateStructure();
-      updateMacroFinancialTransmission();
-      updatePerceivedEconomy();
-      updateExpectationsSystem();
-      updateSentimentSystem();
-      updateBehavioralSystem();
-      updateFirmCreditRatings();
-      updateZombieFirms();
-      computeInequalityMetrics();
-      computeSocialStress();
-      computeMarketOutcome();
-      updateCausalDecomposition();
-      updateEarlyWarningSystem();
-      advanceHistoricalScenarioTimeline();
-      syncHistoricalScenarioMetrics();
-      updateTaxSentimentMetrics();
-      updateVulnerabilitySystem();
-      applyWealthEffects();
-      updateInflationExpectations();
-      updateBusinessOutlook();
-      updateConsumerConfidence();
-      applySentimentToConsumers();
-      applySentimentToFirms();
-      stabilizeEconomy();
-      sanitizeEconomy();
-      repairSimulationState();
-      updateSfcAccountingLayer();
-      appendHistory();
-      updateGameSystems();
-      if (!state.debug.suppressVisualUpdates) {
-        if (shouldUpdateDomThisTick()) safeUpdateAllDisplays();
-        safeUpdateCharts();
-      }
-      state.debug.lastSuccessfulTickTime = performance.now();
+    function resetTickAccounting() {
+      return resetTickAccountingEngine(createSimulationEngineContext());
+    }
+
+    function createSimulationEngineContext() {
+      return {
+        state,
+        createEmptyMetrics,
+        safeNumber,
+        performanceNow: () => performance.now(),
+        callbacks: {
+          syncLivePolicy,
+          applyAutomaticPolicyIfEnabled,
+          advanceShockClock,
+          advancePolicyTransmission,
+          updateInterestRateStructure,
+          updateMacroFinancialTransmission,
+          updatePerceivedEconomy,
+          updateExpectationsSystem,
+          updateSentimentSystem,
+          updateBehavioralSystem,
+          updateExternalSector,
+          updatePolicyCredibility,
+          updateFinancialMarkets,
+          applyInterestEffects,
+          computeDebtStress,
+          propagateFinancialStress,
+          updateWagePriceSpiral,
+          updateLaborMarket,
+          payWages,
+          produceGoods,
+          executeGovernmentSpending,
+          executeConsumerPurchases,
+          executeExternalTrade,
+          executeProducerInvestment,
+          adjustProducerPricesAndExpectations,
+          collectProfitTaxes,
+          updateMacroMetrics,
+          updateAssetMarkets,
+          updateFirmCreditRatings,
+          updateZombieFirms,
+          computeInequalityMetrics,
+          computeSocialStress,
+          computeMarketOutcome,
+          updateCausalDecomposition,
+          updateEarlyWarningSystem,
+          advanceHistoricalScenarioTimeline,
+          syncHistoricalScenarioMetrics,
+          updateTaxSentimentMetrics,
+          updateVulnerabilitySystem,
+          applyWealthEffects,
+          updateInflationExpectations,
+          updateBusinessOutlook,
+          updateConsumerConfidence,
+          applySentimentToConsumers,
+          applySentimentToFirms,
+          stabilizeEconomy,
+          sanitizeEconomy,
+          repairSimulationState,
+          updateSfcAccountingLayer,
+          appendHistory,
+          updateGameSystems,
+          shouldUpdateDomThisTick,
+          safeUpdateAllDisplays,
+          safeUpdateCharts,
+          updateRunState,
+          recordRuntimeError
+        }
+      };
     }
 
     function shouldUpdateDomThisTick() {
@@ -2275,50 +2257,6 @@ import { getModelDefinitions } from "./models/modelDefinitions.js";
 
     function isLargeEconomyMode() {
       return safeNumber(state.config?.consumerCount, 0) > 360 || safeNumber(state.config?.producerCount, 0) > 60;
-    }
-
-    function resetTickAccounting() {
-      state.metrics = createEmptyMetrics();
-      state.government.taxCollectedTick = 0;
-      state.government.householdIncomeTaxCollectedTick = 0;
-      state.government.corporateTaxCollectedTick = 0;
-      state.government.valueAddedTaxCollectedTick = 0;
-      state.government.spendingActualTick = 0;
-      state.government.debtServiceTick = 0;
-      state.government.supportTick = 0;
-      state.government.procurementTick = 0;
-      state.government.subsidyTick = 0;
-      state.government.publicServicesTick = 0;
-
-      state.consumers.forEach((consumer) => {
-        consumer.income = 0;
-        consumer.grossIncomeTick = 0;
-        consumer.disposableIncomeTick = 0;
-        consumer.lastSpent = 0;
-        consumer.lastTax = 0;
-        consumer.debtServiceTick = 0;
-        consumer.mortgageDebtServiceTick = 0;
-        consumer.scheduledMortgageService = 0;
-        consumer.debtBurden = 0;
-      });
-
-      state.producers.forEach((producer) => {
-        producer.revenueTick = 0;
-        producer.govRevenueTick = 0;
-        producer.wageCostTick = 0;
-        producer.interestCostTick = 0;
-        producer.investmentTick = 0;
-        producer.operatingCostTick = 0;
-        producer.preTaxProfit = 0;
-        producer.afterTaxProfit = 0;
-        producer.buybackAndDividendTick = 0;
-        producer.debtRepaymentAllocationTick = 0;
-        producer.retainedEarningsTick = 0;
-        producer.investmentConversionRate = safeNumber(producer.investmentConversionRate, 0);
-        producer.dscr = safeNumber(producer.dscr, 99);
-        producer.productionTick = 0;
-        producer.unitsSoldTick = 0;
-      });
     }
 
     function applyAutomaticPolicyIfEnabled() {
