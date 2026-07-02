@@ -46,18 +46,25 @@ http://127.0.0.1:8788/index.html
 index.html
 styles/main.css
 src/
-  main.js                  # 앱 조립, 이벤트 연결, 남은 시뮬레이션 엔진
+  main.js                  # 얇은 browser entrypoint
+  app/
+    createApp.js           # 앱 facade, runtime registry와 bootstrap 조립
+    appBootstrap.js        # DOM cache, chart setup, 초기 reset/render 순서
+    actionRegistry.js      # 이벤트 handler를 simulation/scenario/dataLab 등으로 그룹화
+    runtimeRegistry.js     # legacy/agent/experiment/developer runtime 생성 registry
   core/
     config.js              # 공통 상수와 정책 전달 메타데이터
     stateFactory.js        # 초기 앱 상태 생성
     domainStateFactory.js  # 자산, 금융, 심리, 대외, 계층 등 domain 초기 상태 생성
     resetSimulation.js     # 시뮬레이션 상태 재초기화 orchestration
     simulationEngine.js    # tick 실행 순서와 안전 wrapper
-    serviceRegistry.js     # tick phase별 service callback 묶음 생성
+    serviceRegistry.js     # tick phase별 runtime service 묶음 생성
     mathUtils.js           # 안전 수치, clamp, 평균, Gini 등 공통 유틸
     formatUtils.js         # 라벨, 등급, 상태 표시용 순수 helper
     calibration.js         # 공식/샘플 보완 데이터 기반 파라미터 보정과 변수별 loss 진단
     backtest.js            # recursive simulated path 기반 과거 구간 검증
+  runtime/
+    legacyRuntimeImpl.js   # 기존 대형 legacy runtime 구현부(추가 세분화 예정)
   analysis/
     causalDecomposition.js # 원인 분해
     earlyWarning.js        # 조기경보등
@@ -94,7 +101,7 @@ data/
   sample_us_macro.json
 ```
 
-현재 아키텍처는 기존 거대 `src/main.js`에서 reset, tick 실행 순서, 소비, 정부, 대외무역, 거시지표, 금리, 은행, 신용, 안전자산, inspector UI, DOM cache, 이벤트 바인딩을 분리하는 중간 단계입니다. 기능 보존을 우선해 일부 모듈은 아직 callback/context 기반으로 연결되어 있으며, 최근 단계에서는 `main.js` import 축소와 phase orchestration 정리를 진행했습니다. 다음 리팩터링 목표는 service registry 내부로 wrapper를 더 이동하고 `initApp()` 중심 bootstrap으로 축소하는 것입니다.
+현재 아키텍처는 기존 거대 `src/main.js`에서 reset, tick 실행 순서, 소비, 정부, 대외무역, 거시지표, 금리, 은행, 신용, 안전자산, inspector UI, DOM cache, 이벤트 바인딩을 단계적으로 분리한 상태입니다. 최근 단계에서는 `main.js`를 `createApp()` entrypoint로 축소하고, 초기화 흐름은 `appBootstrap`, 이벤트 연결은 `actionRegistry`, runtime 생성은 `runtimeRegistry`, tick phase 연결은 `serviceRegistry`로 정리했습니다. 기능 보존을 우선해 `core/legacyRuntime.js`는 얇은 호환 facade로 유지하고 실제 구현은 `runtime/legacyRuntimeImpl.js`로 옮겼으며, 다음 리팩터링 목표는 이를 책임별 runtime으로 더 작게 나누는 것입니다.
 
 ## 백테스트와 데이터 보정
 
@@ -170,9 +177,9 @@ http://127.0.0.1:8789/api/fred
 
 ## 향후 계획
 
-- `src/main.js`의 남은 context/callback 의존성을 줄이고 `initApp()` 중심 조립 파일로 축소
-- `serviceRegistry` 내부로 engine wrapper 등록을 더 이동하고 `main.js` import 수 축소
-- `initApp()` 중심 bootstrap 파일 도입
+- `legacyRuntime` facade를 repair/diagnostic/scenario/asset/agent factory/UI runtime으로 세분화
+- `serviceRegistry` 내부로 engine wrapper 등록을 더 이동하고 runtime phase 의존성 축소
+- `createApp()` 내부의 남은 context/callback 의존성 축소
 - 자산시장, 게임 runtime, 차트/canvas 렌더링 잔여 로직을 독립 모듈로 추가 이동
 - FRED adapter 안정화 및 backend proxy 배포/보안 옵션 보강
 - ECOS 실제 통계코드 매핑과 한국 공식 데이터 live 연동 확대

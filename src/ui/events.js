@@ -1,4 +1,7 @@
-export function setupEvents({ els, safeOn, handlers, documentRef = document, windowRef = window }) {
+import { flattenEventActions } from "../app/actionRegistry.js";
+
+export function setupEvents({ els, safeOn, handlers, actions, documentRef = document, windowRef = window }) {
+  handlers = handlers || flattenEventActions(actions);
   const {
     state,
     showToast,

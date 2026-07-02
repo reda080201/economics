@@ -1,4 +1,5 @@
-export function createSimulationServices(callbacks) {
+export function createSimulationServices(input) {
+  const callbacks = normalizeSimulationCallbacks(input);
   return {
     policy: {
       syncLivePolicy: callbacks.syncLivePolicy,
@@ -76,5 +77,22 @@ export function createSimulationServices(callbacks) {
       sanitizeEconomy: callbacks.sanitizeEconomy,
       repairSimulationState: callbacks.repairSimulationState
     }
+  };
+}
+
+function normalizeSimulationCallbacks(input = {}) {
+  if (!input.runtime && !input.ui && !input.safety) return input;
+  const runtime = input.runtime || {};
+  return {
+    ...(runtime.policy || {}),
+    ...(runtime.rates || {}),
+    ...(runtime.expectations || {}),
+    ...(runtime.finance || {}),
+    ...(runtime.realEconomy || {}),
+    ...(runtime.assets || {}),
+    ...(runtime.diagnostics || {}),
+    ...(runtime.history || {}),
+    ...(input.ui || {}),
+    ...(input.safety || {})
   };
 }
