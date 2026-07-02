@@ -200,6 +200,63 @@
       padding: 0 10px 10px;
     }
 
+    .control-tab-shell {
+      display: grid;
+      gap: 10px;
+    }
+
+    .control-tabs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 6px;
+      padding: 6px;
+      border: 1px solid rgba(22, 48, 46, 0.10);
+      border-radius: 18px;
+      background: rgba(22, 48, 46, 0.055);
+    }
+
+    .control-tab-button {
+      border: 1px solid transparent;
+      border-radius: 13px;
+      padding: 9px 8px;
+      background: rgba(255, 250, 240, 0.62);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+      transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+    }
+
+    .control-tab-button:hover,
+    .control-tab-button:focus-visible {
+      color: var(--teal-dark);
+      border-color: rgba(36, 113, 115, 0.24);
+      outline: none;
+      transform: translateY(-1px);
+    }
+
+    .control-tab-button.active,
+    .control-tab-button[aria-selected="true"] {
+      background: linear-gradient(135deg, rgba(36, 113, 115, 0.16), rgba(107, 181, 142, 0.18));
+      border-color: rgba(36, 113, 115, 0.30);
+      color: var(--teal-dark);
+      box-shadow: 0 8px 18px rgba(36, 113, 115, 0.10);
+    }
+
+    .control-tab-panels,
+    .control-tab-panel {
+      display: grid;
+      gap: 10px;
+    }
+
+    .control-tab-panel[hidden] {
+      display: none !important;
+    }
+
+    .datalab-launcher strong {
+      color: var(--teal-dark);
+      font-size: 13px;
+    }
+
     .control-row,
     .sim-actions,
     .balance-test-actions {
@@ -681,6 +738,22 @@
       }
     }
 
+    @media (max-width: 1040px) {
+      .dashboard {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .controls,
+      .main,
+      .inspector {
+        grid-column: 1 / -1;
+      }
+
+      .control-tabs {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+    }
+
     @media (max-width: 860px) {
       .topbar,
       .dashboard {
@@ -720,7 +793,34 @@
         flex: 1;
       }
 
+      .control-tabs,
+      .button-grid,
+      .control-row.two,
+      .sim-actions {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .control-tab-button,
+      .btn,
+      select,
+      input {
+        min-height: 40px;
+      }
+
       #simulationCanvas {
         height: 360px;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .control-tabs,
+      .button-grid,
+      .control-row.two,
+      .sim-actions {
+        grid-template-columns: 1fr;
+      }
+
+      .control-tab-button {
+        padding: 11px 10px;
       }
     }

@@ -103,9 +103,46 @@ import {
   produceGoods as produceGoodsEngine
 } from "./economy/production.js";
 import {
+  chooseProducerForConsumer as chooseProducerForConsumerEngine,
+  executeConsumerPurchases as executeConsumerPurchasesEngine
+} from "./economy/consumption.js";
+import {
+  allocateAfterTaxCashFlow as allocateAfterTaxCashFlowEngine,
+  collectProfitTaxes as collectProfitTaxesEngine,
+  executeGovernmentSpending as executeGovernmentSpendingEngine,
+  getDebtSpendingBrake as getDebtSpendingBrakeEngine
+} from "./economy/government.js";
+import {
+  executeExternalTrade as executeExternalTradeEngine,
+  syncExternalMetrics as syncExternalMetricsEngine,
+  updateExternalSector as updateExternalSectorEngine
+} from "./economy/externalTrade.js";
+import {
   computeGDP as computeGDPEngine,
   updateMacroMetricsEngine
 } from "./economy/macroMetrics.js";
+import {
+  computeBondMarket as computeBondMarketEngine,
+  computeLoanAndDepositRates as computeLoanAndDepositRatesEngine,
+  syncRateMetrics as syncRateMetricsEngine,
+  updateInterestRateStructure as updateInterestRateStructureEngine
+} from "./finance/interestRates.js";
+import {
+  computeBankingCrisisRisk as computeBankingCrisisRiskEngine,
+  computeCreditSpread as computeCreditSpreadEngine,
+  computeCreditSupply as computeCreditSupplyEngine,
+  syncFinancialMarketMetrics as syncFinancialMarketMetricsEngine,
+  updateBankingSector as updateBankingSectorEngine
+} from "./finance/banking.js";
+import {
+  syncCreditCycleMetrics as syncCreditCycleMetricsEngine,
+  triggerCreditCycleEvent as triggerCreditCycleEventEngine,
+  updateCreditCycle as updateCreditCycleEngine
+} from "./finance/creditCycle.js";
+import {
+  computeSafeAssetMarkets as computeSafeAssetMarketsEngine,
+  computeSafeHavenDemand as computeSafeHavenDemandEngine
+} from "./finance/safeAssets.js";
 import { scenarioSelectGroups } from "./scenarios/presets.js";
 import { hydrateScenarioSelect } from "./ui/controls.js";
 import {
@@ -134,10 +171,10 @@ import { updateInspectorPanel } from "./ui/inspector.js";
       cacheElements();
       hydrateScenarioSelect(els.scenarioSelect, scenarioSelectGroups);
       setupCharts();
-      setupEvents();
       enhanceControlPanel();
       enhanceDetailedMetricsPanel();
       enhanceInspectorHierarchy();
+      setupEvents();
       updateControlLabels();
       resetSimulation();
       requestAnimationFrame(animationLoop);
@@ -373,6 +410,14 @@ import { updateInspectorPanel } from "./ui/inspector.js";
         showToast("성능 모드 변경", els.performanceModeSelect.value === "light" ? "가벼움 모드로 렌더링과 차트 갱신을 줄입니다." : "보통 모드로 실행합니다.");
       }, "performanceModeSelect");
 
+      document.querySelectorAll("[data-control-tab]").forEach((button) => {
+        safeOn(button, "click", () => activateControlTab(button.dataset.controlTab), `control tab ${button.dataset.controlTab}`);
+      });
+
+      document.querySelectorAll("[data-control-action]").forEach((button) => {
+        safeOn(button, "click", () => handleControlPanelAction(button.dataset.controlAction), `control action ${button.dataset.controlAction}`);
+      });
+
       document.querySelectorAll(".more-charts, .model-lab").forEach((details) => {
         details.addEventListener("toggle", () => {
           if (details.open) {
@@ -469,14 +514,17 @@ import { updateInspectorPanel } from "./ui/inspector.js";
 
       const buttonGrid = els.startBtn.closest(".button-grid");
       const scenarioGroup = els.scenarioSelect.closest(".control-group");
-      const sections = [
-        { title: "1. 실행", open: true, nodes: [buttonGrid] },
-        { title: "2. 시나리오", open: true, nodes: [els.gameModeSelect.closest(".control-group"), scenarioGroup] },
-        { title: "3. 핵심 정책", open: true, nodes: [els.interestSlider.closest(".control-group"), els.spendingSlider.closest(".control-group"), els.taxSlider.closest(".control-group"), els.corporateTaxSlider.closest(".control-group"), els.vatSlider.closest(".control-group")] },
-        { title: "고급 설정", open: false, nodes: [els.speedSlider.closest(".control-group"), els.performanceModeSelect.closest(".control-group"), els.shockBtn, els.historicalScenarioBtn, els.autoPolicyToggle?.closest(".toggle-row") || els.autoPolicyToggle, els.randomPolicyEventsToggle?.closest(".toggle-row") || els.randomPolicyEventsToggle, els.consumerSlider.closest(".control-group"), els.producerSlider.closest(".control-group"), els.wageSlider.closest(".control-group"), els.inflationSlider.closest(".control-group")] }
-      ];
+      const title = panel.querySelector(":scope > .panel-title");
+      const tabShell = document.createElement("div");
+      tabShell.className = "control-tab-shell";
+      const tabs = document.createElement("div");
+      tabs.className = "control-tabs";
+      tabs.setAttribute("role", "tablist");
+      tabs.setAttribute("aria-label", "정책 패널 탭");
+      const panels = document.createElement("div");
+      panels.className = "control-tab-panels";
 
-      sections.forEach((section) => {
+      const createDetails = (section) => {
         const details = document.createElement("details");
         details.className = "control-section";
         details.open = section.open;
@@ -487,8 +535,118 @@ import { updateInspectorPanel } from "./ui/inspector.js";
         section.nodes.filter(Boolean).forEach((node) => body.appendChild(node));
         details.appendChild(summary);
         details.appendChild(body);
-        panel.appendChild(details);
+        return details;
+      };
+
+      const makeDataLabLauncher = () => {
+        const launcher = document.createElement("div");
+        launcher.className = "control-group datalab-launcher";
+        launcher.innerHTML = `
+          <strong>DataLab 바로가기</strong>
+          <p class="hint">공식 데이터 불러오기, 데이터 보정, 백테스트, 몬테카를로, Liquidity Radar는 우측 전문가 패널에서 실행합니다.</p>
+          <button type="button" class="btn secondary full" data-control-action="open-datalab">DataLab 열기</button>
+          <button type="button" class="btn secondary full" data-control-action="open-liquidity">Liquidity Radar 열기</button>
+        `;
+        return launcher;
+      };
+
+      const tabConfigs = [
+        {
+          id: "base",
+          label: "기본 정책",
+          sections: [
+            { title: "실행", open: true, nodes: [buttonGrid] },
+            { title: "핵심 정책", open: true, nodes: [els.interestSlider.closest(".control-group"), els.spendingSlider.closest(".control-group"), els.taxSlider.closest(".control-group"), els.corporateTaxSlider.closest(".control-group"), els.vatSlider.closest(".control-group")] }
+          ]
+        },
+        {
+          id: "advanced",
+          label: "고급 설정",
+          sections: [
+            { title: "실행 환경", open: true, nodes: [els.speedSlider.closest(".control-group"), els.performanceModeSelect.closest(".control-group"), els.shockBtn] },
+            { title: "에이전트와 모형", open: false, nodes: [els.consumerSlider.closest(".control-group"), els.producerSlider.closest(".control-group"), els.wageSlider.closest(".control-group"), els.inflationSlider.closest(".control-group")] },
+            { title: "자동화", open: false, nodes: [els.autoPolicyToggle?.closest(".toggle-row") || els.autoPolicyToggle, els.randomPolicyEventsToggle?.closest(".toggle-row") || els.randomPolicyEventsToggle] }
+          ]
+        },
+        {
+          id: "scenario",
+          label: "시나리오",
+          sections: [
+            { title: "분석 모드", open: true, nodes: [els.gameModeSelect.closest(".control-group")] },
+            { title: "프리셋과 역사 전개", open: true, nodes: [scenarioGroup] }
+          ]
+        },
+        {
+          id: "datalab",
+          label: "DataLab",
+          sections: [
+            { title: "데이터 분석", open: true, nodes: [makeDataLabLauncher()] }
+          ]
+        }
+      ];
+
+      tabConfigs.forEach((tab, index) => {
+        const tabButton = document.createElement("button");
+        tabButton.type = "button";
+        tabButton.className = `control-tab-button${index === 0 ? " active" : ""}`;
+        tabButton.id = `control-tab-${tab.id}`;
+        tabButton.dataset.controlTab = tab.id;
+        tabButton.setAttribute("role", "tab");
+        tabButton.setAttribute("aria-selected", index === 0 ? "true" : "false");
+        tabButton.setAttribute("aria-controls", `control-panel-${tab.id}`);
+        tabButton.textContent = tab.label;
+        tabs.appendChild(tabButton);
+
+        const tabPanel = document.createElement("div");
+        tabPanel.className = "control-tab-panel";
+        tabPanel.id = `control-panel-${tab.id}`;
+        tabPanel.dataset.controlPanel = tab.id;
+        tabPanel.setAttribute("role", "tabpanel");
+        tabPanel.setAttribute("aria-labelledby", tabButton.id);
+        tabPanel.hidden = index !== 0;
+        tab.sections.forEach((section) => tabPanel.appendChild(createDetails(section)));
+        panels.appendChild(tabPanel);
       });
+
+      tabShell.appendChild(tabs);
+      tabShell.appendChild(panels);
+      panel.insertBefore(tabShell, title?.nextSibling || panel.firstChild);
+    }
+
+    function activateControlTab(tabId) {
+      if (!tabId) return;
+      document.querySelectorAll("[data-control-tab]").forEach((button) => {
+        const active = button.dataset.controlTab === tabId;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+      });
+      document.querySelectorAll("[data-control-panel]").forEach((panel) => {
+        panel.hidden = panel.dataset.controlPanel !== tabId;
+      });
+    }
+
+    function handleControlPanelAction(action) {
+      if (action === "open-datalab") {
+        openInspectorDetails("데이터 보정·검증", els.dataLabResult);
+        return;
+      }
+      if (action === "open-liquidity") {
+        openInspectorDetails("Liquidity Radar", els.liquidityRadarResult);
+      }
+    }
+
+    function openInspectorDetails(summaryText, focusTarget) {
+      const details = Array.from(document.querySelectorAll("aside details.section"))
+        .find((node) => node.querySelector(":scope > summary")?.textContent.trim() === summaryText);
+      if (details) {
+        details.open = true;
+        details.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      const target = focusTarget || details;
+      if (target && typeof target.focus === "function") {
+        target.setAttribute?.("tabindex", "-1");
+        target.focus({ preventScroll: true });
+      }
     }
 
     function enhanceDetailedMetricsPanel() {
@@ -2451,288 +2609,42 @@ import { updateInspectorPanel } from "./ui/inspector.js";
     // ===== 정부 지출 =====
     // 지출은 실업 지원, 공공 구매, 기업 보조 형태로 경제에 다시 주입된다.
     function executeGovernmentSpending() {
-      const debtBrake = getDebtSpendingBrake();
-      const unemploymentRate = calculateUnemploymentRate();
-      const automaticStabilizer = unemploymentRate > 30
-        ? state.consumers.length * effectiveBaseWage() * 0.085
-        : unemploymentRate > 15
-          ? state.consumers.length * effectiveBaseWage() * 0.035
-          : unemploymentRate > TARGET_UNEMPLOYMENT + 2
-            ? state.consumers.length * effectiveBaseWage() * 0.012
-            : 0;
-      const targetSpending = state.government.spending * debtBrake + automaticStabilizer;
-      const plannedSpending = smoothValue(safeNumber(state.government.spendingImpulse, targetSpending), targetSpending, 0.16);
-      state.government.spendingImpulse = plannedSpending;
-      state.government.effectiveSpending = plannedSpending;
-      if (plannedSpending <= 0) return;
-
-      const transferRecipients = state.consumers.filter((consumer) => !consumer.employed || consumer.incomeSegment === "low" || consumer.cash < effectiveBaseWage() * 1.2);
-      const supportPool = plannedSpending * (unemploymentRate > 30 ? 0.44 : unemploymentRate > 15 ? 0.36 : 0.26);
-      if (transferRecipients.length > 0 && supportPool > 0) {
-      const supportCap = effectiveBaseWage() * (unemploymentRate > 30 ? 0.86 : unemploymentRate > 15 ? 0.72 : 0.62);
-      const supportPerPerson = Math.min(supportCap, supportPool / transferRecipients.length);
-        transferRecipients.forEach((consumer) => {
-          const transfer = supportPerPerson * (!consumer.employed ? 1 : 0.45);
-          consumer.transferMemory = smoothValue(safeNumber(consumer.transferMemory, transfer), transfer, 0.25);
-          consumer.cash += consumer.transferMemory;
-          state.government.spendingActualTick += consumer.transferMemory;
-          state.government.supportTick += consumer.transferMemory;
-          state.metrics.governmentTransfers += consumer.transferMemory;
-          recordFlow("government", 0, "consumer", consumer.id, consumer.transferMemory, "spending");
-        });
-      }
-
-      let procurementBudget = plannedSpending * 0.42;
-      let guard = 0;
-      while (procurementBudget > 2 && guard < 80) {
-        guard += 1;
-        const suppliers = state.producers
-          .filter((producer) => producer.inventory > 0.6)
-          .sort((a, b) => a.price - b.price);
-        if (suppliers.length === 0) break;
-
-        const producer = suppliers[Math.floor(rand(0, Math.min(3, suppliers.length)))];
-        const units = Math.min(producer.inventory, procurementBudget / producer.price, rand(0.8, 4.2));
-        const spend = units * producer.price;
-        if (spend <= 0) break;
-
-        producer.inventory -= units;
-        producer.cash += spend;
-        producer.govRevenueTick += spend;
-        producer.unitsSoldTick += units * 0.28;
-        procurementBudget -= spend;
-        state.metrics.governmentDemand += spend;
-        state.metrics.governmentGDPSpending += spend;
-        state.metrics.governmentProcurement += spend;
-        state.government.spendingActualTick += spend;
-        state.government.procurementTick += spend;
-        recordFlow("government", 0, "producer", producer.id, spend, "spending");
-      }
-
-      const subsidyPool = plannedSpending * 0.08;
-      if (subsidyPool > 0 && state.producers.length > 0) {
-        const eligible = state.producers
-          .filter((producer) => producer.lastProfit < 60 || producer.inventory < producer.expectedDemand)
-          .slice(0, Math.max(1, Math.ceil(state.producers.length * 0.45)));
-        const subsidyReceivers = eligible.length ? eligible : state.producers.slice(0, 1);
-        const perFirmGrant = subsidyPool / subsidyReceivers.length;
-        subsidyReceivers.forEach((producer) => {
-          producer.cash += perFirmGrant;
-          producer.govRevenueTick += perFirmGrant * 0.20;
-          state.government.spendingActualTick += perFirmGrant;
-          state.government.subsidyTick += perFirmGrant;
-          state.metrics.governmentSubsidies += perFirmGrant;
-          recordFlow("government", 0, "producer", producer.id, perFirmGrant, "spending");
-        });
-      }
-
-      const publicServices = plannedSpending * 0.12 + Math.max(0, procurementBudget) * 0.20;
-      if (publicServices > 0 && state.producers.length > 0) {
-        const softDemand = publicServices * 0.35;
-        const perFirmGrant = softDemand / state.producers.length;
-        state.producers.forEach((producer) => {
-          producer.cash += perFirmGrant;
-          producer.govRevenueTick += perFirmGrant * 0.25;
-          state.government.spendingActualTick += perFirmGrant;
-          state.government.publicServicesTick += perFirmGrant;
-          state.metrics.governmentGDPSpending += perFirmGrant;
-          state.metrics.governmentDemand += perFirmGrant;
-          recordFlow("government", 0, "producer", producer.id, perFirmGrant, "spending");
-        });
-      }
+      return executeGovernmentSpendingEngine(createEconomyRuntimeContext());
     }
 
     function getDebtSpendingBrake() {
-      const debtToGdp = safeNumber(state.government.debtToGdpRatio, state.metrics.debtToGdpRatio || 0);
-      const fiscalSpace = safeNumber(state.government.fiscalSpaceScore, 1);
-      const debtBrake = debtToGdp < 0.90 ? 1 : clamp(1 - (debtToGdp - 0.90) * 0.22, 0.62, 1);
-      const spaceBrake = fiscalSpace > 0.45 ? 1 : clamp(0.72 + fiscalSpace * 0.62, 0.55, 1);
-      return clamp(debtBrake * spaceBrake, 0.55, 1);
+      return getDebtSpendingBrakeEngine(createEconomyRuntimeContext());
     }
 
     // ===== 소비자 구매 =====
     // 금리가 오르면 소비 예산이 줄고, 물가 상승과 실업도 소비 심리를 낮춘다.
     function executeConsumerPurchases() {
-      const previousInflation = Math.max(0, state.smoothedInflation);
-      const averagePrice = Math.max(1, average(state.producers.map((producer) => producer.price)));
-      const unemploymentTrend = getRecentUnemploymentTrend();
-      const transmission = state.macroFinancial || createInitialMacroFinancialTransmission(state.config);
-      const perceived = state.perceived || createInitialPerceivedEconomy();
-      const info = state.information || createInitialInformationSystem();
-      const behavior = state.behavior || createInitialBehavioralState();
-      const financial = state.financialMarket || createInitialFinancialMarket(state.config);
-      const creditCycle = state.creditCycle || createInitialCreditCycle();
-      const financialConditionIndex = clamp(safeNumber(transmission.financialConditionsIndex, state.financialConditionIndex), 0, 35);
-      const rates = state.rates || createInitialRateStructure(state.config || {});
-      const depositRate = safeNumber(transmission.depositRate, safeNumber(rates.depositRate, state.government.interestRate * 0.62));
-      const vatRate = clamp(safeNumber(state.government.valueAddedTaxRate, state.policy?.vatEffective || state.config.valueAddedTaxRate || 0.10), 0, 0.35);
-
-      shuffle(state.consumers).forEach((consumer) => {
-        if (consumer.cash <= 1) return;
-
-        const scheduledDebtService = safeNumber(consumer.scheduledDebtService, consumer.debt * safeNumber(rates.loanRate, state.financialMarket?.loanRate || state.government.interestRate + 0.02) * HOUSEHOLD_DEBT_SERVICE_SCALE);
-        const debtService = Math.min(consumer.cash * 0.045, scheduledDebtService);
-        if (debtService > 0) {
-          consumer.cash -= debtService;
-          consumer.debtServiceTick += debtService;
-          consumer.debt = Math.max(0, consumer.debt - debtService * 0.18);
-        }
-        const mortgageService = Math.min(consumer.cash * 0.060, safeNumber(consumer.scheduledMortgageService, consumer.mortgageDebtServiceTick));
-        if (mortgageService > 0) {
-          consumer.cash -= mortgageService;
-          consumer.mortgageDebtServiceTick += mortgageService;
-          consumer.mortgageDebt = Math.max(0, safeNumber(consumer.mortgageDebt, 0) - mortgageService * 0.12);
-        }
-
-        const perceivedInflation = safeNumber(perceived.inflation, previousInflation);
-        const perceivedUnemploymentTrend = unemploymentTrend * 0.55 + (safeNumber(perceived.unemployment, state.metrics.unemploymentRate) - state.metrics.unemploymentRate) * 0.08;
-        consumer.inflationExpectation = smoothValue(safeNumber(consumer.inflationExpectation, TARGET_INFLATION), perceivedInflation * 0.55 + safeNumber(perceived.expectedInflation, TARGET_INFLATION) * 0.25 + TARGET_INFLATION * 0.20, 0.045);
-        const wageInflationGap = perceivedInflation - state.metrics.wageGrowth;
-        const interestTransmission = clamp(1 - (financialConditionIndex / 100) * consumer.interestSensitivity * 0.78, 0.50, 1.04);
-        const inflationSensitivity = safeNumber(consumer.inflationSensitivity, 1);
-        const jobRiskSensitivity = safeNumber(consumer.jobRiskSensitivity, 1);
-        const debtSensitivity = safeNumber(consumer.debtSensitivity, 1);
-        const assetExposure = safeNumber(consumer.assetExposure, 0.25);
-        const inflationDrag = clamp(1 - Math.max(0, wageInflationGap) * state.config.inflationSensitivity * 0.055 * inflationSensitivity - consumer.inflationExpectation * 0.010 * inflationSensitivity, 0.56, 1.04);
-        const vatDrag = clamp(1 - vatRate * (0.42 + inflationSensitivity * 0.55), 0.74, 1.02);
-        const precautionarySaving = clamp(
-          1
-            - Math.max(0, perceivedUnemploymentTrend) * 0.035 * jobRiskSensitivity
-            - Math.max(0, 0.72 - consumer.confidence) * 0.22
-            - safeNumber(consumer.precautionarySavingRate, 0.12) * 0.35
-            - safeNumber(consumer.debtAnxiety, 0) * 0.10,
-          0.62,
-          1.04
-        );
-        const realDepositRate = Math.max(0, safeNumber(rates.realDepositRate, 0));
-        const depositSavingDrag = clamp(1 - depositRate * safeNumber(consumer.savingsPropensity, 0.25) * 0.76 - realDepositRate * (consumer.incomeSegment === "wealthy" || consumer.incomeSegment === "high" ? 0.22 : 0.08), 0.89, 1.02);
-        const cashBufferRatio = consumer.cash / Math.max(1, (consumer.employed ? consumer.income : effectiveBaseWage() * 0.45));
-        const bufferDrag = cashBufferRatio < 2.2 ? clamp(0.74 + cashBufferRatio * 0.11, 0.62, 1) : 1.03;
-        const jobSecurity = clamp(0.58 + safeNumber(consumer.jobSecurity, consumer.employed ? 0.82 : 0.34) * 0.48, consumer.employed ? 0.70 : 0.50, 1.04);
-        const perceivedPainDrag = clamp(
-          1
-            - Math.max(0, safeNumber(perceived.financialStress, 0.20) - 0.24) * 0.11 * debtSensitivity
-            - Math.max(0, safeNumber(perceived.housingBurden, 0.35) - 0.38) * 0.10 * safeNumber(consumer.housingExposure, 0.25)
-            - Math.max(0, 0.70 - safeNumber(perceived.jobSecurity, 0.75)) * 0.14 * jobRiskSensitivity,
-          0.82,
-          1.02
-        );
-        const healthyEmployedBoost = consumer.employed && consumer.debtStress < 0.25
-          ? 1.075
-          : 1;
-        const lowUnemploymentDemandBoost = state.metrics.unemploymentRate < 6
-          ? 1.055
-          : 1;
-        const inventoryClearanceBoost = state.metrics.inventoryToDemand > 2.2
-          ? 1.035
-          : 1;
-        const disposableIncome = Math.max(0, consumer.disposableIncomeTick || consumer.income);
-        const incomeBudget = disposableIncome * consumer.consumptionPropensity;
-        const cashBudget = consumer.cash * (0.028 + consumer.consumptionPropensity * 0.025);
-        const stressMemory = clamp(consumer.stressMemory || consumer.debtStress, 0, 1);
-        const stressDrag = consumer.financiallyStressed
-          ? clamp(0.56 - Math.max(0, stressMemory - 0.68) * 0.78, 0.28, 0.56)
-          : clamp(1 - Math.pow(consumer.debtStress, 1.35) * 0.62, 0.48, 1);
-        const debtBurden = consumer.debtServiceTick / Math.max(1, disposableIncome + (consumer.employed ? 0 : effectiveBaseWage() * 0.16));
-        consumer.debtBurden = smoothValue(safeNumber(consumer.debtBurden, debtBurden), debtBurden, 0.22);
-        const debtServiceDrag = clamp(1 - Math.pow(consumer.debtBurden, 0.85) * 2.15 * debtSensitivity - safeNumber(consumer.debtAnxiety, 0) * 0.16 * debtSensitivity, 0.34, 1);
-        const mortgageBurdenDrag = clamp(1 - Math.pow(safeNumber(consumer.mortgageBurden, 0), 0.78) * 1.15, 0.70, 1.02);
-        const classPolicyTransferBoost = consumer.incomeSegment === "low"
-          ? 1 + clamp(safeNumber(state.government.supportTick, 0) / Math.max(1, state.consumers.length * effectiveBaseWage()), 0, 0.10)
-          : 1;
-        const psychologyDrag = clamp(1 - safeNumber(consumer.inflationAnxiety, 0) * 0.08 * inflationSensitivity + safeNumber(consumer.wealthMood, 0) * 0.05 * (0.8 + assetExposure), 0.80, 1.08);
-        const informationDrag = clamp(1 - safeNumber(info.misperceptionIndex, 0.12) * 0.06 - safeNumber(info.rumorIntensity, 0) * 0.05, 0.86, 1.02);
-        const creditPsychDrag = clamp(
-          1
-            - safeNumber(creditCycle.creditCrunchRisk, 0.12) * 0.060
-            - Math.max(0, 0.70 - safeNumber(financial.depositorConfidence, 0.88)) * 0.075
-            - safeNumber(financial.bankFundingPressure, 0.12) * 0.040
-            + safeNumber(creditCycle.creditExcessRisk, 0.12) * 0.025,
-          0.84,
-          1.035
-        );
-        const behavioralBias = clamp(
-          1
-            + safeNumber(behavior.fomoIntensity, 0) * 0.035 * CALIBRATION.behavioralBiasWeight
-            + safeNumber(behavior.realEstateNeverFallsBelief, 0.46) * safeNumber(consumer.wealthEffectSensitivity, 0.22) * 0.026 * CALIBRATION.behavioralBiasWeight
-            - safeNumber(behavior.lossAversion, 0.55) * Math.max(0, -safeNumber(consumer.wealthEffect, 0)) * 0.22 * CALIBRATION.behavioralBiasWeight
-            - safeNumber(behavior.panicSellingPressure, 0.05) * 0.045 * CALIBRATION.behavioralBiasWeight
-            - safeNumber(behavior.herdIntensity, 0.18) * Math.max(0, state.metrics.recessionFear || 0) * 0.018 * CALIBRATION.behavioralBiasWeight,
-          0.86,
-          1.08
-        );
-        const limitedWealthEffect = clamp(safeNumber(consumer.wealthEffect, safeNumber(transmission.wealthEffect, 0)) * safeNumber(consumer.wealthEffectSensitivity, 0.22) * (0.75 + assetExposure) * CALIBRATION.wealthEffectWeight, -0.09, 0.09);
-        const sentimentAdjustedConfidence = 1 + (consumer.confidence - 1) * CALIBRATION.sentimentWeight;
-        const classProfile = state.classAnalysis?.classes?.[consumer.incomeSegment];
-        const classConsumptionMultiplier = clamp(safeNumber(classProfile?.consumptionMultiplier, 1), 0.82, 1.08);
-        const responseConsumptionMultiplier = computeConsumptionResponseSignal(consumer, { disposableIncome });
-        let consumptionBudget = (incomeBudget + cashBudget) * sentimentAdjustedConfidence * inflationDrag * vatDrag * precautionarySaving * bufferDrag * jobSecurity * stressDrag * debtServiceDrag * healthyEmployedBoost * lowUnemploymentDemandBoost * inventoryClearanceBoost * state.shock.demandMultiplier;
-        consumptionBudget *= mortgageBurdenDrag * depositSavingDrag * psychologyDrag * informationDrag * creditPsychDrag * behavioralBias * perceivedPainDrag * classPolicyTransferBoost * classConsumptionMultiplier * responseConsumptionMultiplier * (1 + limitedWealthEffect);
-        // 명시적 금리 공식: 금리가 오를수록 같은 소득에서도 소비 예산이 줄어든다.
-        consumptionBudget *= interestTransmission;
-        consumer.smoothedConsumptionBudget = smoothValue(
-          safeNumber(consumer.smoothedConsumptionBudget, consumptionBudget),
-          consumptionBudget,
-          0.20
-        );
-        consumptionBudget = consumer.smoothedConsumptionBudget;
-        let remainingBudget = clamp(consumptionBudget, 0, consumer.cash * 0.42);
-        const minimumConsumptionFloor = clamp((consumer.employed ? consumer.income : effectiveBaseWage() * 0.18) * 0.08 + averagePrice * 0.18, 0, consumer.cash * 0.16);
-        remainingBudget = Math.max(remainingBudget, minimumConsumptionFloor);
-        if (stressMemory > 0.88) remainingBudget *= clamp(1 - (stressMemory - 0.88) * 3.0, 0.38, 1);
-
-        for (let round = 0; round < 2 && remainingBudget > averagePrice * 0.25; round += 1) {
-          const producer = chooseProducerForConsumer(consumer, averagePrice);
-          if (!producer) break;
-
-          const consumerPrice = producer.price * (1 + vatRate);
-          const units = Math.min(producer.inventory, remainingBudget / Math.max(0.01, consumerPrice), rand(0.45, 3.6));
-          const netSpend = units * producer.price;
-          const vat = netSpend * vatRate;
-          const spend = netSpend + vat;
-          if (units <= 0 || spend <= 0 || spend > consumer.cash + 0.001) break;
-
-          consumer.cash -= spend;
-          consumer.lastSpent += spend;
-          producer.cash += netSpend;
-          producer.revenueTick += netSpend;
-          producer.unitsSoldTick += units;
-          producer.inventory -= units;
-          remainingBudget -= spend;
-          state.metrics.consumption += netSpend;
-          state.metrics.unitsSold += units;
-          if (vat > 0) {
-            state.government.taxCollectedTick += vat;
-            state.government.valueAddedTaxCollectedTick += vat;
-            state.metrics.valueAddedTaxCollected += vat;
-            state.metrics.totalTaxCollected += vat;
-            consumer.lastTax += vat;
-            recordFlow("consumer", consumer.id, "government", 0, vat, "tax");
-          }
-          recordFlow("consumer", consumer.id, "producer", producer.id, netSpend, "trade");
-        }
-      });
+      return executeConsumerPurchasesEngine(createEconomyRuntimeContext());
     }
 
     function chooseProducerForConsumer(consumer, averagePrice) {
-      const available = state.producers.filter((producer) => producer.inventory > 0.2);
-      if (available.length === 0) return null;
+      return chooseProducerForConsumerEngine(createEconomyRuntimeContext(), consumer, averagePrice);
+    }
 
-      const scored = available.map((producer) => {
-        let score;
-        if (consumer.demandPreference === "budget") {
-          score = producer.price * rand(0.94, 1.07);
-        } else if (consumer.demandPreference === "quality") {
-          score = (producer.price / Math.max(0.5, producer.productivity)) * rand(0.94, 1.08);
-        } else {
-          const priceScore = producer.price / averagePrice;
-          const stockScore = producer.inventory < producer.expectedDemand ? 0.93 : 1.03;
-          score = producer.price * priceScore * stockScore * rand(0.95, 1.06);
-        }
-        return { producer, score };
-      }).sort((a, b) => a.score - b.score);
-
-      return scored[Math.floor(rand(0, Math.min(3, scored.length)))].producer;
+    function createEconomyRuntimeContext() {
+      return {
+        state,
+        calculateUnemploymentRate,
+        computeConsumptionResponseSignal,
+        createInitialBehavioralState,
+        createInitialCreditCycle,
+        createInitialExternalActors,
+        createInitialExternalSector,
+        createInitialFinancialMarket,
+        createInitialInformationSystem,
+        createInitialMacroFinancialTransmission,
+        createInitialPerceivedEconomy,
+        createInitialPolicyCredibility,
+        createInitialRateStructure,
+        effectiveBaseWage,
+        getRecentUnemploymentTrend,
+        recordFlow
+      };
     }
 
     // ===== 기업 투자 =====
@@ -2873,34 +2785,7 @@ import { updateInspectorPanel } from "./ui/inspector.js";
     }
 
     function executeExternalTrade() {
-      // 대외 수요는 제조업 중심의 수출 매출로 들어오고, 약한 통화는 수출에는 도움을 주지만 수입 비용을 높인다.
-      const external = state.external || createInitialExternalSector();
-      const actors = state.externalActors || createInitialExternalActors();
-      const foreignPull = safeNumber(actors.foreignConsumers?.exportPull, safeNumber(actors.foreignConsumers?.demandIndex, 100) / 100);
-      const exportDemandFactor = clamp((safeNumber(external.exportDemand, 100) / 100) * clamp(foreignPull, 0.55, 1.70), 0.45, 1.95);
-      const exchangeCompetitiveness = clamp(1 + (safeNumber(external.exchangeRateIndex, 100) - 100) * 0.0022, 0.80, 1.18);
-      let exportSales = 0;
-
-      state.producers.forEach((producer) => {
-        const exposure = safeNumber(producer.exportExposure, 0);
-        if (exposure <= 0.01 || producer.inventory <= 0) return;
-        const sectorMultiplier = producer.sector === "manufacturing" ? 1.20 : producer.sector === "technology" ? 1.05 : producer.sector === "energy" ? 1.12 : producer.sector === "agriculture" ? 0.92 : 0.72;
-        const targetUnits = producer.expectedDemand * exposure * exportDemandFactor * exchangeCompetitiveness * sectorMultiplier * 0.18;
-        const units = Math.min(producer.inventory, Math.max(0, targetUnits));
-        if (units <= 0) return;
-
-        const revenue = units * producer.price * clamp(0.96 + exchangeCompetitiveness * 0.05, 0.96, 1.08);
-        producer.inventory -= units;
-        producer.cash += revenue;
-        producer.revenueTick += revenue;
-        producer.unitsSoldTick += units;
-        exportSales += revenue;
-        state.metrics.consumption += revenue * 0.10;
-        state.metrics.unitsSold += units;
-      });
-
-      state.metrics.exportSales = safeNumber(state.metrics.exportSales, 0) + exportSales;
-      if (state.external) state.external.tradeBalance = smoothValue(safeNumber(state.external.tradeBalance, 0), safeNumber(state.external.tradeBalance, 0) + exportSales, 0.05);
+      return executeExternalTradeEngine(createEconomyRuntimeContext());
     }
 
     // ===== 가격과 기대수요 =====
@@ -2915,87 +2800,11 @@ import { updateInspectorPanel } from "./ui/inspector.js";
     // ===== 이윤세 =====
     // 임금과 투자비를 반영한 양의 이윤에 대해 정부가 세금을 걷는다.
     function collectProfitTaxes() {
-      state.producers.forEach((producer) => {
-        const revenue = producer.revenueTick + producer.govRevenueTick;
-        const propertyCost = safeNumber(producer.rentCost, 0) / TICKS_PER_MONTH + safeNumber(producer.propertyDebt, 0) * safeNumber(state.macroFinancial?.loanRate, state.financialMarket?.loanRate || 0.05) * 0.020 / TICKS_PER_MONTH;
-        const externalCostPressure = Math.max(0, safeNumber(state.metrics.importPriceIndex, 100) - 100) * safeNumber(producer.importCostExposure, 0) * 0.00045
-          + Math.max(0, safeNumber(state.metrics.energyPriceIndex, 100) - 100) * safeNumber(producer.energyCostExposure, 0) * 0.00058;
-        const sectorCostMultiplier = producer.sector === "manufacturing" ? 1.12 : producer.sector === "construction" ? 1.06 : 1;
-        const externalOperatingCost = Math.max(0, producer.productionTick * producer.price * externalCostPressure * sectorCostMultiplier);
-        const operatingCost = Math.max(0, producer.productionTick * producer.price * 0.055 + producer.inventory * producer.price * 0.0015 + propertyCost + externalOperatingCost);
-        producer.operatingCostTick = operatingCost;
-        const cashFlowBeforeDebtService = revenue - producer.wageCostTick - operatingCost - producer.investmentTick * 0.35 + producer.cash * 0.020;
-        const preTaxProfit = cashFlowBeforeDebtService - producer.interestCostTick - producer.investmentTick * 0.27;
-        let corporateTax = 0;
-        if (preTaxProfit > 0) {
-          corporateTax = Math.min(producer.cash, preTaxProfit * state.government.corporateTaxRate);
-          producer.cash -= corporateTax;
-          state.government.taxCollectedTick += corporateTax;
-          state.government.corporateTaxCollectedTick += corporateTax;
-          state.metrics.corporateTaxCollected += corporateTax;
-          state.metrics.totalTaxCollected += corporateTax;
-          recordFlow("producer", producer.id, "government", 0, corporateTax, "tax");
-        }
-        producer.preTaxProfit = preTaxProfit;
-        producer.afterTaxProfit = preTaxProfit - corporateTax;
-        producer.lastProfit = producer.afterTaxProfit;
-        allocateAfterTaxCashFlow(producer, producer.afterTaxProfit);
-        const firmDebtService = Math.max(0.01, producer.interestCostTick);
-        producer.dscr = smoothValue(safeNumber(producer.dscr, 99), cashFlowBeforeDebtService / Math.max(1, firmDebtService), 0.24);
-        producer.profitTrend = clamp(smoothValue(producer.profitTrend, producer.lastProfit, 0.16), -800, 1200);
-      });
+      return collectProfitTaxesEngine(createEconomyRuntimeContext());
     }
 
     function allocateAfterTaxCashFlow(producer, afterTaxProfit) {
-      if (!producer || afterTaxProfit <= 0) {
-        producer.investmentConversionRate = smoothValue(safeNumber(producer.investmentConversionRate, 0), 0, 0.08);
-        return;
-      }
-      const strategy = producer.firmStrategy || "투자형";
-      const demandOutlook = clamp(safeNumber(producer.businessOutlook, 1) * safeNumber(state.metrics.salesPressure, 1), 0.35, 1.65);
-      const creditTight = clamp((safeNumber(state.metrics.creditSpread, 2) - 2) / 7 + Math.max(0, 85 - safeNumber(state.metrics.creditSupplyIndex, 100)) / 70, 0, 1);
-      const corporateTax = clamp(safeNumber(state.government.corporateTaxRate, 0.18), 0, 0.60);
-      const taxRelief = clamp((0.22 - corporateTax) / 0.22, -0.8, 1.0);
-      const weakDemand = demandOutlook < 0.88 || state.metrics.inventoryToDemand > 2.4;
-      let investShare = strategy === "고성장형" ? 0.48 : strategy === "투자형" ? 0.42 : strategy === "부채축소형" ? 0.18 : strategy === "배당·자사주형" ? 0.16 : 0.24;
-      let payoutShare = strategy === "배당·자사주형" ? 0.42 : strategy === "현금보수형" ? 0.18 : strategy === "고성장형" ? 0.10 : 0.16;
-      let debtShare = strategy === "부채축소형" ? 0.42 : producer.debtStress > 0.55 ? 0.34 : 0.18;
-
-      investShare += Math.max(0, demandOutlook - 1) * 0.16 - creditTight * 0.18 + taxRelief * (weakDemand ? -0.04 : 0.08);
-      payoutShare += taxRelief * (weakDemand ? 0.14 : 0.04) + safeNumber(producer.shareholderPayoutPreference, 0.25) * 0.16 + Math.max(0, state.metrics.stockValuationPressure - 0.45) * 0.08;
-      debtShare += creditTight * 0.12 + Math.max(0, safeNumber(producer.debtStress, 0) - 0.35) * 0.18;
-      if (producer.sector === "technology") investShare += 0.06;
-      if (producer.sector === "financial") payoutShare += 0.04;
-      if (producer.sector === "staples") payoutShare += 0.05;
-
-      investShare = clamp(investShare, 0.04, 0.62);
-      payoutShare = clamp(payoutShare, 0.02, 0.54);
-      debtShare = clamp(debtShare, 0.03, 0.56);
-      const total = Math.max(0.01, investShare + payoutShare + debtShare);
-      if (total > 0.86) {
-        investShare *= 0.86 / total;
-        payoutShare *= 0.86 / total;
-        debtShare *= 0.86 / total;
-      }
-      const distributable = Math.min(producer.cash * 0.18, afterTaxProfit * 0.55);
-      const buyback = Math.max(0, distributable * payoutShare);
-      const debtRepayment = Math.min(producer.debt, Math.max(0, distributable * debtShare));
-      const retained = Math.max(0, distributable * Math.max(0, 1 - investShare - payoutShare - debtShare));
-      const investmentReserve = Math.max(0, distributable * investShare);
-
-      producer.cash = clamp(producer.cash - buyback - debtRepayment, 0, 3500000);
-      producer.debt = Math.max(0, producer.debt - debtRepayment);
-      producer.buybackAndDividendTick += buyback;
-      producer.debtRepaymentAllocationTick += debtRepayment;
-      producer.retainedEarningsTick += retained + investmentReserve;
-      producer.investmentConversionRate = smoothValue(safeNumber(producer.investmentConversionRate, 0), investmentReserve / Math.max(0.01, distributable), 0.12);
-      producer.investorSentiment = clamp(smoothValue(safeNumber(producer.investorSentiment, 1), 1 + buyback / Math.max(1, producer.marketCap) * 0.22 - weakDemand * 0.04, 0.08), 0.70, 1.22);
-      producer.equityFinancingCondition = clamp(safeNumber(producer.equityFinancingCondition, 1) + buyback / Math.max(1, producer.marketCap) * 0.018, 0.55, 1.18);
-
-      state.metrics.buybackDividendSpending += buyback;
-      state.metrics.debtRepaymentAllocation += debtRepayment;
-      state.metrics.retainedEarningsAllocation += retained + investmentReserve;
-      state.metrics.investmentConversionRate = smoothValue(safeNumber(state.metrics.investmentConversionRate, 0), producer.investmentConversionRate, 0.08);
+      return allocateAfterTaxCashFlowEngine(createEconomyRuntimeContext(), producer, afterTaxProfit);
     }
 
     // ===== 거시지표 집계 =====
@@ -3022,6 +2831,48 @@ import { updateInspectorPanel } from "./ui/inspector.js";
         fearGreedLabel,
         stockVolatilityIndexLabel,
         syncFinancialMarketMetrics
+      };
+    }
+
+    function createInterestRateContext() {
+      return {
+        state,
+        createInitialFinancialMarket,
+        createInitialPolicyCredibility,
+        createInitialRateStructure,
+        createInitialSentimentState,
+        getGDPGrowthWindow
+      };
+    }
+
+    function createBankingContext() {
+      return {
+        state,
+        createInitialCreditCycle,
+        createInitialMacroFinancialTransmission,
+        createInitialRateStructure,
+        getGDPGrowthWindow
+      };
+    }
+
+    function createCreditCycleContext() {
+      return {
+        state,
+        addEventMarker,
+        createInitialCreditCycle,
+        createInitialFinancialMarket,
+        createInitialRateStructure,
+        pushEvent
+      };
+    }
+
+    function createSafeAssetsContext() {
+      return {
+        state,
+        createInitialCreditCycle,
+        createInitialMacroFinancialTransmission,
+        getGDPGrowthWindow,
+        getRecentUnemploymentTrend
       };
     }
 
@@ -3364,124 +3215,11 @@ import { updateInspectorPanel } from "./ui/inspector.js";
     }
 
     function updateInterestRateStructure() {
-      if (!state.rates) state.rates = createInitialRateStructure(state.config || {});
-      const rates = state.rates;
-      const financial = state.financialMarket || createInitialFinancialMarket(state.config || {});
-      const sentiment = state.sentiment || createInitialSentimentState();
-      const credibility = state.policyCredibility || createInitialPolicyCredibility();
-      const policyRate = safeNumber(state.policy?.interestTarget, safeNumber(state.config?.interestRate, NEUTRAL_INTEREST_RATE / 100));
-      const effectivePolicyRate = safeNumber(state.policy?.interestEffective, safeNumber(state.government?.interestRate, policyRate));
-      const expectedInflation = clamp(safeNumber(sentiment.inflationExpectations, TARGET_INFLATION) / 100, -0.02, 0.09);
-      const inflationGap = safeNumber(state.metrics.inflationGap, 0) / 100;
-      const unemploymentGap = safeNumber(state.metrics.unemploymentGap, 0) / 100;
-      const taylorGap = inflationGap * 0.55 - unemploymentGap * 0.30 + safeNumber(state.metrics.outputGap, 0) / 100 * 0.10;
-      const credibilityGap = 1 - safeNumber(credibility.centralBankCredibility, 0.78);
-      const marketFear = safeNumber(sentiment.recessionFear, 0.2) * 0.010 + Math.max(0, 0.55 - safeNumber(sentiment.marketRiskSentiment, 0.7)) * 0.012;
-      const expectedRateChange = clamp(taylorGap + credibilityGap * Math.max(0, inflationGap) * 0.8 - marketFear, -0.045, 0.055);
-      const expectedPathTarget = clamp(effectivePolicyRate + expectedRateChange, 0, 0.28);
-      const previousEffective = safeNumber(rates.effectivePolicyRate, effectivePolicyRate);
-      const policySurprise = clamp((effectivePolicyRate - previousEffective) - safeNumber(rates.expectedRateChangeNext12M, 0) / 12, -0.04, 0.04);
-      const fiscalRisk = clamp(safeNumber(state.metrics.debtToGdpRatio, 0) * 0.010 + Math.max(0, 0.45 - safeNumber(state.metrics.fiscalSpaceScore, 1)) * 0.014 + credibilityGap * 0.010, 0, 0.065);
-      const sovereignRiskPremium = clamp(smoothValue(safeNumber(rates.sovereignRiskPremium, 0.006), fiscalRisk + Math.max(0, 0.55 - safeNumber(state.metrics.fiscalCredibility, 0.78)) * 0.012, 0.07), 0, 0.08);
-      const bondMarketLiquidity = clamp(smoothValue(safeNumber(rates.bondMarketLiquidity, 0.86), 0.94 - safeNumber(financial.liquidityStress, 0.05) * 0.28 - safeNumber(financial.bondMarketStress, 0.10) * 0.22 + safeNumber(financial.flightToQualityDemand, 0.05) * 0.08, 0.06), 0.35, 1.05);
-      const termPremium = clamp(0.008 + safeNumber(financial.riskAversion, 0.2) * 0.010 + sovereignRiskPremium * 0.55 + Math.max(0, 0.82 - bondMarketLiquidity) * 0.018 - Math.max(0, -expectedRateChange) * 0.10, 0.002, 0.060);
-      const durationRiskPremium = clamp(0.004 + Math.max(0, termPremium - 0.012) * 0.55 + safeNumber(rates.rateUncertainty, 0.08) * 0.008 + Math.max(0, 0.76 - bondMarketLiquidity) * 0.016, 0.001, 0.045);
-      const creditSpread = safeNumber(financial.creditSpread, safeNumber(rates.creditSpread, 0.02));
-      const bankStressPremium = safeNumber(financial.bankStress, 0.12) * 0.025;
-      const mortgageSpread = safeNumber(rates.mortgageSpread, 0.022) + safeNumber(financial.bankStress, 0.12) * 0.012;
-      const corporateRiskPremium = creditSpread * 0.55 + safeNumber(state.metrics.distressedFirmRatio, 0) / 100 * 0.018 + safeNumber(state.metrics.zombieFirmRatio, 0) / 100 * 0.010;
-      const bill3MTarget = clamp(effectivePolicyRate * 0.86 + expectedPathTarget * 0.14 + expectedInflation * 0.035, 0, 0.22);
-      const bond2YTarget = clamp(expectedPathTarget * 0.72 + effectivePolicyRate * 0.28 + expectedInflation * 0.18 + credibilityGap * 0.010, 0.002, 0.24);
-      const longRunRate = safeNumber(rates.neutralRate, NEUTRAL_INTEREST_RATE / 100) + expectedRateChange * 0.35;
-      const bond5YTarget = clamp(bond2YTarget * 0.42 + longRunRate * 0.34 + expectedInflation * 0.35 + termPremium * 0.60 + sovereignRiskPremium * 0.36, 0.003, 0.24);
-      const bond10YTarget = clamp(longRunRate + expectedInflation * 0.55 + termPremium + sovereignRiskPremium, 0.004, 0.24);
-      const bond30YTarget = clamp(longRunRate + expectedInflation * 0.68 + termPremium * 1.15 + sovereignRiskPremium * 1.10 + durationRiskPremium, 0.006, 0.26);
-
-      rates.policyRate = policyRate;
-      rates.effectivePolicyRate = effectivePolicyRate;
-      rates.expectedRateChangeNext12M = smoothValue(safeNumber(rates.expectedRateChangeNext12M, 0), expectedRateChange, 0.12);
-      rates.expectedPolicyRatePath = smoothValue(safeNumber(rates.expectedPolicyRatePath, expectedPathTarget), expectedPathTarget, 0.16);
-      rates.shortTermRate = smoothValue(safeNumber(rates.shortTermRate, effectivePolicyRate), effectivePolicyRate, 0.25);
-      rates.treasuryBill3M = clamp(smoothValue(safeNumber(rates.treasuryBill3M, bill3MTarget), bill3MTarget, 0.22), 0, 0.22);
-      rates.depositRate = clamp(smoothValue(safeNumber(rates.depositRate, effectivePolicyRate * 0.62), effectivePolicyRate * 0.65, 0.10), 0, 0.16);
-      rates.bondYield2Y = clamp(smoothValue(safeNumber(rates.bondYield2Y, bond2YTarget), bond2YTarget, 0.16), 0.002, 0.24);
-      rates.bondYield5Y = clamp(smoothValue(safeNumber(rates.bondYield5Y, bond5YTarget), bond5YTarget, 0.11), 0.003, 0.24);
-      rates.bondYield10Y = clamp(smoothValue(safeNumber(rates.bondYield10Y, bond10YTarget), bond10YTarget, 0.08), 0.004, 0.24);
-      rates.bondYield30Y = clamp(smoothValue(safeNumber(rates.bondYield30Y, bond30YTarget), bond30YTarget, 0.055), 0.006, 0.26);
-      rates.creditSpread = clamp(creditSpread, 0.01, 0.12);
-      rates.loanRate = clamp(smoothValue(safeNumber(rates.loanRate, effectivePolicyRate + creditSpread), effectivePolicyRate + creditSpread + bankStressPremium, 0.08), 0.005, 0.28);
-      rates.mortgageRate = clamp(smoothValue(safeNumber(rates.mortgageRate, rates.bondYield10Y + mortgageSpread), rates.bondYield10Y + mortgageSpread + bankStressPremium * 0.65, 0.06), 0.006, 0.30);
-      rates.corporateLoanRate = clamp(smoothValue(safeNumber(rates.corporateLoanRate, rates.loanRate + 0.006), Math.max(rates.loanRate, rates.bondYield2Y + corporateRiskPremium) + bankStressPremium * 0.35, 0.075), 0.006, 0.32);
-      rates.realPolicyRate = clamp(rates.effectivePolicyRate - expectedInflation, -0.08, 0.18);
-      rates.realLoanRate = clamp(rates.loanRate - expectedInflation, -0.08, 0.22);
-      rates.realDepositRate = clamp(rates.depositRate - expectedInflation, -0.08, 0.16);
-      rates.termSpread = clamp(rates.bondYield10Y - rates.shortTermRate, -0.10, 0.12);
-      rates.sovereignRiskPremium = sovereignRiskPremium;
-      rates.termPremium = termPremium;
-      rates.durationRiskPremium = durationRiskPremium;
-      rates.bondMarketLiquidity = bondMarketLiquidity;
-      rates.rateShock = clamp(smoothValue(safeNumber(rates.rateShock, 0), Math.abs(effectivePolicyRate - previousEffective), 0.22), 0, 0.06);
-      rates.policySurprise = clamp(smoothValue(safeNumber(rates.policySurprise, 0), policySurprise, 0.18), -0.04, 0.04);
-      rates.rateUncertainty = clamp(smoothValue(safeNumber(rates.rateUncertainty, 0.08), Math.abs(rates.policySurprise) * 12 + Math.abs(rates.expectedRateChangeNext12M) * 2.0 + (1 - safeNumber(credibility.forwardGuidanceClarity, 0.76)) * 0.28, 0.08), 0, 1);
-      rates.bankNetInterestMargin = clamp(rates.loanRate - rates.depositRate, 0.002, 0.20);
-      rates.governmentAverageFundingRate = clamp(smoothValue(safeNumber(rates.governmentAverageFundingRate, rates.bondYield10Y), rates.bondYield10Y + sovereignRiskPremium * 0.22 + Math.max(0, 0.75 - bondMarketLiquidity) * 0.012, 0.035), 0.004, 0.26);
-      rates.globalPolicyRate = smoothValue(safeNumber(rates.globalPolicyRate, 0.032), 0.032 + safeNumber(state.external?.globalRiskSentiment, 0.2) * 0.006, 0.015);
-      rates.interestRateDifferential = clamp(rates.shortTermRate - rates.globalPolicyRate, -0.12, 0.18);
-      rates.ratePathLabel = rates.expectedRateChangeNext12M > 0.008 ? "긴축 기대" : rates.expectedRateChangeNext12M < -0.008 ? "완화 기대" : "중립";
-
-      state.rates = rates;
-      if (state.financialMarket) {
-        state.financialMarket.depositRate = rates.depositRate;
-        state.financialMarket.loanRate = rates.loanRate;
-        state.financialMarket.bondYield = rates.bondYield10Y;
-        state.financialMarket.bondYield2Y = rates.bondYield2Y;
-        state.financialMarket.bondYield5Y = rates.bondYield5Y;
-        state.financialMarket.bondYield10Y = rates.bondYield10Y;
-        state.financialMarket.bondYield30Y = rates.bondYield30Y;
-        state.financialMarket.creditSpread = rates.creditSpread;
-      }
-      if (state.realEstate) state.realEstate.mortgageRate = rates.mortgageRate;
-      syncRateMetrics();
+      return updateInterestRateStructureEngine(createInterestRateContext());
     }
 
     function syncRateMetrics() {
-      if (!state.metrics) return;
-      if (!state.rates) state.rates = createInitialRateStructure(state.config || {});
-      const rates = state.rates;
-      state.metrics.policyRate = safeNumber(rates.policyRate, 0) * 100;
-      state.metrics.interestRatePercent = safeNumber(rates.effectivePolicyRate, safeNumber(rates.policyRate, 0)) * 100;
-      state.metrics.shortTermRate = safeNumber(rates.shortTermRate, 0) * 100;
-      state.metrics.treasuryBill3M = safeNumber(rates.treasuryBill3M, rates.shortTermRate || 0) * 100;
-      state.metrics.bondYield2Y = safeNumber(rates.bondYield2Y, 0) * 100;
-      state.metrics.bondYield5Y = safeNumber(rates.bondYield5Y, rates.bondYield2Y || 0) * 100;
-      state.metrics.bondYield10Y = safeNumber(rates.bondYield10Y, 0) * 100;
-      state.metrics.bondYield30Y = safeNumber(rates.bondYield30Y, rates.bondYield10Y || 0) * 100;
-      state.metrics.bondYield = state.metrics.bondYield10Y;
-      state.metrics.loanRate = safeNumber(rates.loanRate, 0) * 100;
-      state.metrics.mortgageRate = safeNumber(rates.mortgageRate, 0) * 100;
-      state.metrics.corporateLoanRate = safeNumber(rates.corporateLoanRate, 0) * 100;
-      state.metrics.depositRate = safeNumber(rates.depositRate, 0) * 100;
-      state.metrics.realPolicyRate = safeNumber(rates.realPolicyRate, 0) * 100;
-      state.metrics.realLoanRate = safeNumber(rates.realLoanRate, 0) * 100;
-      state.metrics.realDepositRate = safeNumber(rates.realDepositRate, 0) * 100;
-      state.metrics.termSpread = safeNumber(rates.termSpread, 0) * 100;
-      state.metrics.creditSpread = safeNumber(rates.creditSpread, 0.02) * 100;
-      state.metrics.rateShock = safeNumber(rates.rateShock, 0) * 100;
-      state.metrics.rateUncertainty = safeNumber(rates.rateUncertainty, 0);
-      state.metrics.policySurpriseRate = safeNumber(rates.policySurprise, 0) * 100;
-      state.metrics.policySurprise = state.metrics.policySurpriseRate;
-      state.metrics.bankNetInterestMargin = safeNumber(rates.bankNetInterestMargin, 0) * 100;
-      state.metrics.governmentAverageFundingRate = safeNumber(rates.governmentAverageFundingRate, 0) * 100;
-      state.metrics.interestRateDifferential = safeNumber(rates.interestRateDifferential, 0) * 100;
-      state.metrics.globalPolicyRate = safeNumber(rates.globalPolicyRate, 0) * 100;
-      state.metrics.expectedRatePath = safeNumber(rates.expectedRateChangeNext12M, 0) * 100;
-      state.metrics.sovereignRiskPremium = safeNumber(rates.sovereignRiskPremium, 0) * 100;
-      state.metrics.termPremium = safeNumber(rates.termPremium, 0) * 100;
-      state.metrics.durationRiskPremium = safeNumber(rates.durationRiskPremium, 0) * 100;
-      state.metrics.bondMarketLiquidity = safeNumber(rates.bondMarketLiquidity, 0.86);
-      state.metrics.marketRateExpectation = safeNumber(rates.expectedPolicyRatePath, 0) * 100;
-      state.metrics.ratePathLabel = rates.ratePathLabel || "중립";
-      state.metrics.policyGap = (safeNumber(rates.effectivePolicyRate, 0) - safeNumber(rates.neutralRate, NEUTRAL_INTEREST_RATE / 100)) * 100;
+      return syncRateMetricsEngine(createInterestRateContext());
     }
 
     function updateMacroFinancialTransmission() {
@@ -4084,44 +3822,8 @@ import { updateInspectorPanel } from "./ui/inspector.js";
       state.metrics.behaviorLabel = b.label || "보통";
     }
 
-    function updateExternalSector() {
-      // 대외 부문은 환율-수입물가-수출-원자재 비용 경로를 단순화해 실물경제와 물가에 연결한다.
-      if (!state.external) state.external = createInitialExternalSector();
-      if (!state.externalActors) state.externalActors = createInitialExternalActors();
-      const e = state.external;
-      const actors = state.externalActors;
-      const financial = state.financialMarket || createInitialFinancialMarket(state.config);
-      const credibility = state.policyCredibility || createInitialPolicyCredibility();
-      const rates = state.rates || createInitialRateStructure(state.config || {});
-      const rateGap = safeNumber(rates.interestRateDifferential, safeNumber(state.macroFinancial?.effectivePolicyRate, state.government?.interestRate || 0.03) - safeNumber(rates.globalPolicyRate, 0.032));
-      const externalRisk = clamp((safeNumber(financial.safeHavenDemand, 0) * 0.25 + safeNumber(financial.bankStress, 0) * 0.18 + (1 - safeNumber(credibility.centralBankCredibility, 0.78)) * 0.20 + safeNumber(state.information?.rumorIntensity, 0) * 0.10) * CALIBRATION.externalShockWeight, 0, 1);
-      const exchangeTarget = clamp(100 - rateGap * 150 + externalRisk * 18 + Math.max(0, state.metrics.inflationGap) * 1.8 + Math.max(0, 0.55 - safeNumber(credibility.centralBankCredibility, 0.78)) * 16 - safeNumber(e.tradeBalance, 0) / Math.max(800, safeNumber(state.metrics.gdp, 1) * 18), 72, 155);
-      e.exchangeRateIndex = clamp(smoothValue(e.exchangeRateIndex, exchangeTarget, 0.045), 70, 160);
-      e.globalRiskSentiment = clamp(smoothValue(e.globalRiskSentiment, externalRisk, 0.055), 0, 1);
-      e.foreignInvestorSentiment = clamp(smoothValue(e.foreignInvestorSentiment, 0.78 - externalRisk * 0.32 - Math.max(0, state.metrics.debtToGdpRatio - 1.2) * 0.06 + safeNumber(credibility.centralBankCredibility, 0.78) * 0.08, 0.055), 0, 1.1);
-      e.globalDemand = clamp(smoothValue(e.globalDemand, 100 + getGDPGrowthWindow() * 0.40 - externalRisk * 10 + rand(-0.35, 0.35), 0.030), 72, 135);
-      // 외국 주체는 개별 에이전트 대신 대표부문으로 두어 수출, 자본유입, 장기금리, 수입비용을 연결한다.
-      actors.foreignConsumers.confidence = clamp(smoothValue(safeNumber(actors.foreignConsumers.confidence, 0.72), 0.70 + (e.globalDemand - 100) * 0.006 - externalRisk * 0.22, 0.060), 0.25, 1.05);
-      actors.foreignConsumers.demandIndex = clamp(smoothValue(safeNumber(actors.foreignConsumers.demandIndex, 100), e.globalDemand * 0.82 + actors.foreignConsumers.confidence * 22 + Math.max(0, e.exchangeRateIndex - 100) * 0.20 - 16, 0.055), 55, 170);
-      actors.foreignConsumers.exportPull = clamp(actors.foreignConsumers.demandIndex / 100, 0.55, 1.70);
-      actors.foreignInvestors.sentiment = clamp(smoothValue(safeNumber(actors.foreignInvestors.sentiment, 0.72), safeNumber(e.foreignInvestorSentiment, 0.72) - safeNumber(financial.bondMarketStress, 0.10) * 0.12 + safeNumber(credibility.centralBankCredibility, 0.78) * 0.06, 0.065), 0.15, 1.10);
-      actors.foreignInvestors.capitalFlow = smoothValue(safeNumber(actors.foreignInvestors.capitalFlow, 0), (actors.foreignInvestors.sentiment - 0.62) * Math.max(80, safeNumber(state.metrics.gdp, 100) * 0.18), 0.080);
-      actors.foreignInvestors.equityFlow = smoothValue(safeNumber(actors.foreignInvestors.equityFlow, 0), (actors.foreignInvestors.sentiment - 0.58) * Math.max(40, safeNumber(state.metrics.gdp, 100) * 0.08), 0.080);
-      actors.foreignBondholders.demand = clamp(smoothValue(safeNumber(actors.foreignBondholders.demand, 0.74), 0.78 - Math.max(0, safeNumber(state.metrics.debtToGdpRatio, 0.7) - 0.9) * 0.12 - safeNumber(financial.bondMarketStress, 0.10) * 0.28 + safeNumber(credibility.fiscalCredibility || state.sentiment?.fiscalCredibility, 0.75) * 0.10, 0.060), 0.18, 1.05);
-      actors.foreignBondholders.fundingPressure = clamp(smoothValue(safeNumber(actors.foreignBondholders.fundingPressure, 0.12), Math.max(0, 0.72 - actors.foreignBondholders.demand) + safeNumber(financial.bondMarketStress, 0.10) * 0.35, 0.070), 0, 1);
-      actors.foreignSuppliers.pressure = clamp(smoothValue(safeNumber(actors.foreignSuppliers.pressure, 0.18), externalRisk * 0.34 + Math.max(0, safeNumber(e.commodityPriceIndex, 100) - 100) / 145 + safeNumber(state.shock.pricePressure, 0) * 1.4, 0.055), 0, 1);
-      actors.foreignSuppliers.deliveryStress = clamp(smoothValue(safeNumber(actors.foreignSuppliers.deliveryStress, 0.12), actors.foreignSuppliers.pressure * 0.62 + Math.max(0, safeNumber(e.energyPriceIndex, 100) - 100) / 170, 0.055), 0, 1);
-      e.exportDemand = clamp(smoothValue(e.exportDemand, e.globalDemand * 0.82 + actors.foreignConsumers.demandIndex * 0.18 + Math.max(0, e.exchangeRateIndex - 100) * 0.28 - externalRisk * 5, 0.055), 60, 175);
-      e.importPriceIndex = clamp(smoothValue(e.importPriceIndex, 100 + (e.exchangeRateIndex - 100) * 0.42 + safeNumber(e.commodityPriceIndex, 100) * 0.16 - 16 + actors.foreignSuppliers.pressure * 7, 0.055), 70, 200);
-      e.commodityPriceIndex = clamp(smoothValue(e.commodityPriceIndex, 100 + externalRisk * 10 + Math.max(0, e.globalDemand - 100) * 0.18 + safeNumber(state.shock.pricePressure, 0) * 30 + actors.foreignSuppliers.pressure * 8 + rand(-0.30, 0.30), 0.030), 65, 225);
-      e.energyPriceIndex = clamp(smoothValue(e.energyPriceIndex, 100 + (e.commodityPriceIndex - 100) * 0.58 + externalRisk * 8 + safeNumber(state.shock.pricePressure, 0) * 22 + actors.foreignSuppliers.deliveryStress * 10, 0.040), 60, 245);
-      const exportRevenue = sum(state.producers.map((p) => safeNumber(p.exportExposure, 0) * safeNumber(p.revenueTick + p.govRevenueTick, 0) * (e.exportDemand / 100)));
-      const importCosts = sum(state.producers.map((p) => (safeNumber(p.importCostExposure, 0) * (e.importPriceIndex - 100) + safeNumber(p.energyCostExposure, 0) * (e.energyPriceIndex - 100)) * 0.010 * Math.max(0, p.productionTick * p.price)));
-      e.tradeBalance = smoothValue(safeNumber(e.tradeBalance, 0), exportRevenue - importCosts, 0.10);
-      e.importInflationPressure = clamp((e.importPriceIndex - 100) / 100 * 2.4 * CALIBRATION.externalShockWeight, -1, 4.5);
-      e.commodityCostPressure = clamp(((e.commodityPriceIndex + e.energyPriceIndex) / 2 - 100) / 100 * 3.0 * CALIBRATION.externalShockWeight, -1, 6);
-      e.externalShockPressure = clamp(Math.max(0, e.importInflationPressure) * 0.24 + Math.max(0, e.commodityCostPressure) * 0.18 + externalRisk * 0.20 + actors.foreignSuppliers.pressure * 0.12 + actors.foreignBondholders.fundingPressure * 0.08, 0, 1);
-      syncExternalMetrics();
+    function updateExternalSector()  {
+      return updateExternalSectorEngine(createEconomyRuntimeContext());
     }
 
     function updatePolicyCredibility() {
@@ -4513,26 +4215,8 @@ import { updateInspectorPanel } from "./ui/inspector.js";
       m.dominantVulnerability = v.dominant;
     }
 
-    function syncExternalMetrics() {
-      const e = state.external || createInitialExternalSector();
-      const actors = state.externalActors || createInitialExternalActors();
-      state.metrics.exchangeRateIndex = safeNumber(e.exchangeRateIndex, 100);
-      state.metrics.exportDemand = safeNumber(e.exportDemand, 100);
-      state.metrics.importPriceIndex = safeNumber(e.importPriceIndex, 100);
-      state.metrics.commodityPriceIndex = safeNumber(e.commodityPriceIndex, 100);
-      state.metrics.energyPriceIndex = safeNumber(e.energyPriceIndex, 100);
-      state.metrics.tradeBalance = safeNumber(e.tradeBalance, 0);
-      state.metrics.foreignConsumerDemand = safeNumber(actors.foreignConsumers?.demandIndex, safeNumber(e.exportDemand, 100));
-      state.metrics.exportConsumerDemand = state.metrics.foreignConsumerDemand;
-      state.metrics.foreignInvestorSentiment = safeNumber(actors.foreignInvestors?.sentiment, safeNumber(e.foreignInvestorSentiment, 0.72));
-      state.metrics.foreignCapitalFlow = safeNumber(actors.foreignInvestors?.capitalFlow, 0);
-      state.metrics.foreignBondDemand = safeNumber(actors.foreignBondholders?.demand, 0.74);
-      state.metrics.foreignSupplierPressure = safeNumber(actors.foreignSuppliers?.pressure, 0.18);
-      state.metrics.globalRiskSentiment = safeNumber(e.globalRiskSentiment, 0.28);
-      state.metrics.globalDemand = safeNumber(e.globalDemand, 100);
-      state.metrics.externalShockPressure = safeNumber(e.externalShockPressure, 0);
-      state.metrics.importInflationPressure = safeNumber(e.importInflationPressure, 0);
-      state.metrics.commodityCostPressure = safeNumber(e.commodityCostPressure, 0);
+    function syncExternalMetrics()  {
+      return syncExternalMetricsEngine(createEconomyRuntimeContext());
     }
 
     function syncPolicyCredibilityMetrics() {
@@ -4611,327 +4295,51 @@ import { updateInspectorPanel } from "./ui/inspector.js";
     }
 
     function computeLoanAndDepositRates() {
-      const financial = state.financialMarket;
-      if (!financial) return;
-      if (!state.rates) state.rates = createInitialRateStructure(state.config || {});
-      const rates = state.rates;
-      financial.depositRate = clamp(safeNumber(rates.depositRate, financial.depositRate), 0, 0.16);
-      financial.loanRate = clamp(safeNumber(rates.loanRate, financial.loanRate), 0.005, 0.28);
-      financial.creditSpread = clamp(safeNumber(rates.creditSpread, financial.creditSpread), 0.01, 0.12);
+      return computeLoanAndDepositRatesEngine(createInterestRateContext());
     }
 
     function computeBondMarket() {
-      const financial = state.financialMarket;
-      if (!financial) return;
-      if (!state.rates) state.rates = createInitialRateStructure(state.config || {});
-      const rates = state.rates;
-      const previousYield = safeNumber(financial.bondYield, safeNumber(rates.bondYield10Y, NEUTRAL_INTEREST_RATE / 100));
-      const previous2Y = safeNumber(financial.bondYield2Y, safeNumber(rates.bondYield2Y, previousYield));
-      const previous5Y = safeNumber(financial.bondYield5Y, safeNumber(rates.bondYield5Y, previousYield));
-      const previous30Y = safeNumber(financial.bondYield30Y, safeNumber(rates.bondYield30Y, previousYield));
-      financial.bondYield = clamp(safeNumber(rates.bondYield10Y, previousYield), 0.004, 0.24);
-      financial.bondYield2Y = clamp(safeNumber(rates.bondYield2Y, financial.bondYield), 0.002, 0.24);
-      financial.bondYield5Y = clamp(safeNumber(rates.bondYield5Y, financial.bondYield), 0.003, 0.24);
-      financial.bondYield10Y = financial.bondYield;
-      financial.bondYield30Y = clamp(safeNumber(rates.bondYield30Y, financial.bondYield), 0.006, 0.26);
-      const yieldChange = financial.bondYield - previousYield;
-      const yieldChange2Y = financial.bondYield2Y - previous2Y;
-      const yieldChange5Y = financial.bondYield5Y - previous5Y;
-      const yieldChange30Y = financial.bondYield30Y - previous30Y;
-      const priceReturn = clamp(-yieldChange * 8.5 + (100 - safeNumber(financial.bondPriceIndex, 100)) / 100 * 0.0012, -BOND_PRICE_RETURN_LIMIT, BOND_PRICE_RETURN_LIMIT);
-      financial.bondPriceIndex = clamp(safeNumber(financial.bondPriceIndex, 100) * (1 + priceReturn), 55, 145);
-      const shortReturn = clamp(-yieldChange2Y * 2.1 + (100 - safeNumber(financial.shortBondPriceIndex, 100)) / 100 * 0.0010, -0.025, 0.025);
-      const mediumReturn = clamp(-yieldChange5Y * 5.2 + (100 - safeNumber(financial.mediumBondPriceIndex, 100)) / 100 * 0.0011, -0.040, 0.040);
-      const longReturn = clamp(-yieldChange30Y * 14.0 + (100 - safeNumber(financial.longBondPriceIndex, 100)) / 100 * 0.0014, -0.060, 0.055);
-      financial.shortBondPriceIndex = clamp(safeNumber(financial.shortBondPriceIndex, 100) * (1 + shortReturn), 70, 135);
-      financial.mediumBondPriceIndex = clamp(safeNumber(financial.mediumBondPriceIndex, 100) * (1 + mediumReturn), 58, 145);
-      financial.longBondPriceIndex = clamp(safeNumber(financial.longBondPriceIndex, 100) * (1 + longReturn), 42, 160);
-      const liquidityStress = Math.max(0, 0.78 - safeNumber(rates.bondMarketLiquidity, 0.86));
-      financial.bondMarketStress = clamp(smoothValue(safeNumber(financial.bondMarketStress, 0.10), Math.abs(yieldChange30Y) * 18 + Math.max(0, 100 - financial.longBondPriceIndex) / 100 * 0.42 + liquidityStress * 0.55 + safeNumber(rates.sovereignRiskPremium, 0) * 3.0, 0.08), 0, 1);
-      financial.flightToQualityDemand = clamp(smoothValue(safeNumber(financial.flightToQualityDemand, 0.05), safeNumber(financial.safeHavenDemand, 0) * 0.42 + Math.max(0, 0.60 - safeNumber(state.sentiment?.marketRiskSentiment, 0.74)) * 0.34 + Math.max(0, -getGDPGrowthWindow()) * 0.020, 0.06), 0, 1);
+      return computeBondMarketEngine(createInterestRateContext());
     }
 
     function updateBankingSector() {
-      const financial = state.financialMarket;
-      const transmission = state.macroFinancial || createInitialMacroFinancialTransmission(state.config);
-      const rates = state.rates || createInitialRateStructure(state.config || {});
-      const householdStress = safeNumber(state.metrics.debtStressedHouseholdRatio, 0) / 100;
-      const firmStress = safeNumber(state.metrics.debtStressedFirmRatio, 0) / 100;
-      const unemploymentStress = Math.max(0, safeNumber(state.metrics.unemploymentRate, TARGET_UNEMPLOYMENT) - TARGET_UNEMPLOYMENT) / 22;
-      const assetDecline = Math.max(0, -safeNumber(state.assetMarket?.stockReturn, 0)) * 7 + Math.max(0, -safeNumber(state.assetMarket?.housingReturn, 0)) * 10 + Math.max(0, -safeNumber(transmission.wealthEffect, 0)) * 1.8;
-      const collateralStress = Math.max(0, 100 - safeNumber(state.realEstate?.collateralValueIndex, 100)) / 100;
-      const commercialStress = Math.max(0, safeNumber(state.realEstate?.commercialVacancy, 0.08) - 0.12) * 1.8 + Math.max(0, -safeNumber(state.realEstate?.commercialReturn, 0)) * 10;
-      const negativeEquityStress = safeNumber(state.metrics.negativeEquityRatio, 0) / 100;
-      const dscrStress = clamp((1.4 - safeNumber(state.metrics.averageFirmDSCR, 1.4)) / 1.4, 0, 1);
-      const creditCycle = state.creditCycle || createInitialCreditCycle();
-      const nplTarget = clamp(0.014 + householdStress * 0.032 + firmStress * 0.044 + unemploymentStress * 0.026 + dscrStress * 0.024, 0.005, 0.24);
-      financial.nonPerformingLoanRatio = smoothValue(safeNumber(financial.nonPerformingLoanRatio, 0.025), nplTarget, 0.045);
-      const bankRiskAppetite = safeNumber(state.sentiment?.bankRiskAppetite, 0.72);
-      const marginRelief = clamp((safeNumber(rates.bankNetInterestMargin, 0.025) - 0.026) * 2.8, -0.06, 0.08);
-      const bondPortfolioLoss = Math.max(0, 100 - safeNumber(financial.bondPriceIndex, 100)) / 100 * 0.45 + Math.max(0, 100 - safeNumber(financial.longBondPriceIndex, 100)) / 100 * 0.55;
-      const depositorConfidenceTarget = clamp(0.92 - financial.nonPerformingLoanRatio * 0.80 - safeNumber(financial.bankStress, 0.12) * 0.30 - safeNumber(financial.liquidityStress, 0.05) * 0.20 - safeNumber(creditCycle.creditCrunchRisk, 0.12) * 0.14 + marginRelief * 0.28, 0.20, 1.05);
-      const interbankTrustTarget = clamp(0.88 - safeNumber(financial.bankStress, 0.12) * 0.38 - financial.nonPerformingLoanRatio * 1.10 - safeNumber(financial.bondMarketStress, 0.10) * 0.16 - safeNumber(creditCycle.eventType === "interbankDistrust" ? creditCycle.eventIntensity * 0.25 : 0, 0), 0.18, 1.02);
-      const fundingPressureTarget = clamp(0.10 + Math.max(0, 0.76 - depositorConfidenceTarget) * 0.40 + Math.max(0, 0.72 - interbankTrustTarget) * 0.34 + safeNumber(financial.bondMarketStress, 0.10) * 0.20 + safeNumber(creditCycle.creditCrunchRisk, 0.12) * 0.18, 0, 1);
-      const capitalConfidenceTarget = clamp(0.88 - bondPortfolioLoss * 0.38 - financial.nonPerformingLoanRatio * 1.25 - firmStress * 0.18 - collateralStress * 0.14, 0.15, 1.05);
-      const creditOfficerTarget = clamp(0.18 + financial.bankStress * 0.34 + safeNumber(creditCycle.creditCrunchRisk, 0.12) * 0.32 + safeNumber(financial.bondMarketStress, 0.10) * 0.14 + Math.max(0, 0.76 - interbankTrustTarget) * 0.26 - safeNumber(creditCycle.creditExcessRisk, 0.12) * 0.10, 0.05, 0.92);
-      financial.depositorConfidence = smoothValue(safeNumber(financial.depositorConfidence, 0.88), depositorConfidenceTarget, depositorConfidenceTarget < safeNumber(financial.depositorConfidence, 0.88) ? 0.10 : 0.045);
-      financial.interbankTrust = smoothValue(safeNumber(financial.interbankTrust, 0.84), interbankTrustTarget, interbankTrustTarget < safeNumber(financial.interbankTrust, 0.84) ? 0.11 : 0.045);
-      financial.bankFundingPressure = clamp(smoothValue(safeNumber(financial.bankFundingPressure, 0.12), fundingPressureTarget, 0.08), 0, 1);
-      financial.creditOfficerCaution = clamp(smoothValue(safeNumber(financial.creditOfficerCaution, 0.28), creditOfficerTarget, 0.08), 0, 1);
-      financial.bankCapitalConfidence = smoothValue(safeNumber(financial.bankCapitalConfidence, 0.82), capitalConfidenceTarget, capitalConfidenceTarget < safeNumber(financial.bankCapitalConfidence, 0.82) ? 0.09 : 0.04);
-      const loanDemandTarget = clamp(102 + Math.max(0, state.metrics.salesPressure - 1) * 20 + Math.max(0, state.metrics.residentialReturn || 0) * 2.0 - safeNumber(rates.realLoanRate, 0) * 120 - financial.creditOfficerCaution * 18 - safeNumber(creditCycle.creditCrunchRisk, 0.12) * 14 + safeNumber(creditCycle.creditExcessRisk, 0.12) * 8, 45, 122);
-      financial.loanDemandIndex = clamp(smoothValue(safeNumber(financial.loanDemandIndex, 100), loanDemandTarget, 0.055), 45, 122);
-      financial.riskUnderpricing = clamp(smoothValue(safeNumber(financial.riskUnderpricing, 0.12), safeNumber(creditCycle.creditExcessRisk, 0.12) * 0.45 + Math.max(0, financial.creditSupplyIndex - 100) / 100 * 0.36 + Math.max(0, 0.24 - financial.bankStress) * 0.20, 0.055), 0, 1);
-      const rawStress = clamp((financial.nonPerformingLoanRatio * 2.5 + householdStress * 0.22 + firmStress * 0.30 + unemploymentStress * 0.20 + assetDecline * 0.22 + collateralStress * 0.18 + commercialStress * 0.16 + negativeEquityStress * 0.14 + safeNumber(financial.creditSpread, 0.02) * 2.5 + Math.max(0, 0.62 - bankRiskAppetite) * 0.18 + bondPortfolioLoss * 0.16 + financial.bankFundingPressure * 0.18 + Math.max(0, 0.62 - financial.interbankTrust) * 0.16 - marginRelief) * CALIBRATION.bankStressWeight, 0, 1);
-      financial.bankStress = clamp(smoothValue(safeNumber(financial.bankStress, 0.12), rawStress, 0.055), 0, 1);
-      const healthTarget = clamp(112 - financial.bankStress * 72 - financial.nonPerformingLoanRatio * 95 - safeNumber(financial.liquidityStress, 0) * 20 + marginRelief * 55 - bondPortfolioLoss * 22 - financial.bankFundingPressure * 14 + financial.bankCapitalConfidence * 8, 0, 120);
-      financial.bankHealthIndex = clamp(smoothValue(safeNumber(financial.bankHealthIndex, 100), healthTarget, 0.050), 0, 120);
-    }
-
-    function updateCreditCycle() {
-      if (!state.creditCycle) state.creditCycle = createInitialCreditCycle();
-      if (!state.financialMarket) state.financialMarket = createInitialFinancialMarket(state.config);
-      const cycle = state.creditCycle;
-      const financial = state.financialMarket;
-      const rates = state.rates || createInitialRateStructure(state.config || {});
-      cycle.eventIntensity = clamp(safeNumber(cycle.eventIntensity, 0) * safeNumber(cycle.eventHalfLife, 0.93), 0, 1);
-      if (cycle.eventIntensity < 0.035) {
-        cycle.eventIntensity = 0;
-        cycle.eventType = "none";
-      }
-
-      const creditEase = clamp((safeNumber(financial.creditSupplyIndex, 100) - 100) / 22, -1, 1);
-      const spreadEase = clamp((0.030 - safeNumber(financial.creditSpread, 0.02)) / 0.025, -1, 1);
-      const loanDemand = clamp((safeNumber(financial.loanDemandIndex, 100) - 100) / 24, -1, 1);
-      const leverageTarget = clamp(
-        safeNumber(state.metrics.averageHouseholdDebtBurden, 0) / 30 * 0.32
-          + safeNumber(state.metrics.firmDebt, 0) / Math.max(1, safeNumber(state.metrics.gdp, 1) * 18) * 0.28
-          + Math.max(0, safeNumber(state.metrics.housingMispricing, 0)) / 100 * 0.20
-          + Math.max(0, safeNumber(state.metrics.stockMispricing, 0)) / 100 * 0.12,
-        0,
-        1
-      );
-      cycle.privateLeveragePressure = clamp(smoothValue(safeNumber(cycle.privateLeveragePressure, 0.18), leverageTarget, 0.06), 0, 1);
-      cycle.creditGap = clamp(smoothValue(safeNumber(cycle.creditGap, 0), creditEase * 0.38 + spreadEase * 0.28 + loanDemand * 0.22 + (cycle.privateLeveragePressure - 0.35) * 0.22, 0.06), -1, 1);
-      const qualityTarget = clamp(0.82 - safeNumber(financial.riskUnderpricing, 0.12) * 0.30 - Math.max(0, cycle.creditGap) * 0.18 - cycle.privateLeveragePressure * 0.12 + safeNumber(financial.creditOfficerCaution, 0.28) * 0.10, 0.22, 0.96);
-      cycle.underwritingQuality = clamp(smoothValue(safeNumber(cycle.underwritingQuality, 0.76), qualityTarget, 0.055), 0, 1);
-      const eventCrunch = ["creditCrunch", "depositorAnxiety", "interbankDistrust", "bondVolatility", "longRateSpike"].includes(cycle.eventType) ? cycle.eventIntensity : 0;
-      const eventExcess = cycle.eventType === "creditExcess" ? cycle.eventIntensity : 0;
-      cycle.creditExcessRisk = clamp(smoothValue(safeNumber(cycle.creditExcessRisk, 0.12), Math.max(0, cycle.creditGap) * 0.48 + cycle.privateLeveragePressure * 0.28 + Math.max(0, 0.58 - cycle.underwritingQuality) * 0.24 + eventExcess * 0.22, 0.07), 0, 1);
-      cycle.creditCrunchRisk = clamp(smoothValue(safeNumber(cycle.creditCrunchRisk, 0.12), Math.max(0, -cycle.creditGap) * 0.38 + safeNumber(financial.bankFundingPressure, 0.12) * 0.28 + Math.max(0, 0.62 - safeNumber(financial.interbankTrust, 0.84)) * 0.28 + safeNumber(financial.bondMarketStress, 0.10) * 0.16 + eventCrunch * 0.24, 0.08), 0, 1);
-      const nextPhase = cycle.creditCrunchRisk > 0.62
-        ? "신용경색"
-        : cycle.creditExcessRisk > 0.62
-          ? "신용 과다"
-          : cycle.creditGap > 0.24
-            ? "완화"
-            : cycle.creditGap < -0.24
-              ? "긴축"
-              : "정상";
-      cycle.monthsInPhase = nextPhase === cycle.phase ? safeNumber(cycle.monthsInPhase, 0) + 1 / TICKS_PER_MONTH : 0;
-      cycle.phase = nextPhase;
-
-      if (cycle.eventIntensity > 0) {
-        const intensity = cycle.eventIntensity;
-        if (cycle.eventType === "creditCrunch") {
-          financial.bankFundingPressure = clamp(financial.bankFundingPressure + intensity * 0.025, 0, 1);
-          financial.loanDemandIndex = clamp(financial.loanDemandIndex - intensity * 2.2, 45, 122);
-        } else if (cycle.eventType === "creditExcess") {
-          financial.riskUnderpricing = clamp(financial.riskUnderpricing + intensity * 0.025, 0, 1);
-          financial.loanDemandIndex = clamp(financial.loanDemandIndex + intensity * 2.4, 45, 122);
-        } else if (cycle.eventType === "depositorAnxiety") {
-          financial.depositorConfidence = clamp(financial.depositorConfidence - intensity * 0.025, 0.18, 1.05);
-          financial.bankFundingPressure = clamp(financial.bankFundingPressure + intensity * 0.030, 0, 1);
-        } else if (cycle.eventType === "interbankDistrust") {
-          financial.interbankTrust = clamp(financial.interbankTrust - intensity * 0.030, 0.18, 1.02);
-          financial.liquidityStress = clamp(financial.liquidityStress + intensity * 0.022, 0, 1);
-        } else if (cycle.eventType === "bondVolatility") {
-          financial.bondMarketStress = clamp(financial.bondMarketStress + intensity * 0.035, 0, 1);
-          rates.bondMarketLiquidity = clamp(safeNumber(rates.bondMarketLiquidity, 0.86) - intensity * 0.014, 0.35, 1.05);
-        } else if (cycle.eventType === "longRateSpike") {
-          rates.bondYield10Y = clamp(safeNumber(rates.bondYield10Y, 0.04) + intensity * 0.0009, 0.004, 0.24);
-          rates.bondYield30Y = clamp(safeNumber(rates.bondYield30Y, 0.05) + intensity * 0.0014, 0.006, 0.26);
-          financial.bondMarketStress = clamp(financial.bondMarketStress + intensity * 0.026, 0, 1);
-        } else if (cycle.eventType === "safeHavenSurge") {
-          financial.safeHavenDemand = clamp(financial.safeHavenDemand + intensity * 0.026, 0, 1);
-          financial.flightToQualityDemand = clamp(financial.flightToQualityDemand + intensity * 0.030, 0, 1);
-        }
-      }
-
-      syncCreditCycleMetrics();
-    }
-
-    function triggerCreditCycleEvent(type, intensity = 0.65, message = "") {
-      if (!state.creditCycle) state.creditCycle = createInitialCreditCycle();
-      const cycle = state.creditCycle;
-      cycle.eventType = type;
-      cycle.eventIntensity = clamp(Math.max(safeNumber(cycle.eventIntensity, 0), intensity), 0, 1);
-      cycle.eventHalfLife = type === "creditExcess" ? 0.965 : type === "longRateSpike" || type === "bondVolatility" ? 0.945 : 0.935;
-      const labels = {
-        creditCrunch: "신용경색",
-        creditExcess: "신용 과다",
-        bondVolatility: "국채시장 변동성",
-        depositorAnxiety: "예금자 불안",
-        interbankDistrust: "은행 간 신뢰 하락",
-        longRateSpike: "장기금리 급등",
-        safeHavenSurge: "안전자산 선호 급등"
-      };
-      pushEvent(message || `${labels[type] || "신용 사건"}: 금융시장 충격이 반감기를 두고 잔류합니다.`);
-      addEventMarker("신용");
-    }
-
-    function syncCreditCycleMetrics() {
-      if (!state.metrics || !state.creditCycle) return;
-      const c = state.creditCycle;
-      state.metrics.creditCyclePhase = c.phase || "정상";
-      state.metrics.creditGap = safeNumber(c.creditGap, 0);
-      state.metrics.privateLeveragePressure = safeNumber(c.privateLeveragePressure, 0.18);
-      state.metrics.underwritingQuality = safeNumber(c.underwritingQuality, 0.76);
-      state.metrics.creditExcessRisk = safeNumber(c.creditExcessRisk, 0.12);
-      state.metrics.creditCrunchRisk = safeNumber(c.creditCrunchRisk, 0.12);
-      state.metrics.creditEventIntensity = safeNumber(c.eventIntensity, 0);
-      state.metrics.creditEventType = c.eventType || "none";
+      return updateBankingSectorEngine(createBankingContext());
     }
 
     function computeCreditSpread() {
-      const financial = state.financialMarket;
-      const firmStress = safeNumber(state.metrics.debtStressedFirmRatio, 0) / 100;
-      const unemploymentPressure = Math.max(0, safeNumber(state.metrics.unemploymentRate, TARGET_UNEMPLOYMENT) - TARGET_UNEMPLOYMENT) / 100;
-      const assetDecline = Math.max(0, -safeNumber(state.assetMarket?.stockReturn, 0)) * 2.2 + Math.max(0, -safeNumber(state.assetMarket?.housingReturn, 0)) * 2.8;
-      const liquidity = safeNumber(financial.liquidityStress, 0);
-      const profitRelief = state.metrics.averageFirmProfit > 0 && getGDPGrowthWindow() > -1 ? -0.004 : 0;
-      const riskAppetiteRelief = Math.max(0, safeNumber(state.sentiment?.bankRiskAppetite, 0.7) - 0.7) * 0.010;
-      const rumorPremium = state.information?.rumorType === "bank" ? safeNumber(state.information.rumorIntensity, 0) * safeNumber(state.information.rumorCredibility, 0) * 0.016 : 0;
-      const overreactionPremium = safeNumber(state.information?.marketOverreaction, 0.1) * 0.006;
-      const behavioralPremium = safeNumber(state.behavior?.panicSellingPressure, 0.05) * 0.010 + safeNumber(state.behavior?.herdIntensity, 0.18) * safeNumber(state.sentiment?.recessionFear, 0.2) * 0.008 - safeNumber(state.behavior?.realEstateNeverFallsBelief, 0.46) * Math.max(0, safeNumber(state.realEstate?.collateralValueIndex, 100) - 100) * 0.000025;
-      const cycle = state.creditCycle || createInitialCreditCycle();
-      const bankPsychPremium = safeNumber(financial.bankFundingPressure, 0.12) * 0.020 + Math.max(0, 0.66 - safeNumber(financial.interbankTrust, 0.84)) * 0.022 + safeNumber(financial.creditOfficerCaution, 0.28) * 0.011;
-      const creditCyclePremium = safeNumber(cycle.creditCrunchRisk, 0.12) * 0.030 - safeNumber(cycle.creditExcessRisk, 0.12) * 0.010 + Math.max(0, 0.62 - safeNumber(cycle.underwritingQuality, 0.76)) * 0.012;
-      const targetSpreadRaw = 0.012 + financial.bankStress * 0.050 * CALIBRATION.creditChannelWeight + firmStress * 0.030 * CALIBRATION.creditChannelWeight + unemploymentPressure * 0.12 + assetDecline + liquidity * 0.030 + bankPsychPremium + creditCyclePremium + rumorPremium + overreactionPremium + behavioralPremium + profitRelief - riskAppetiteRelief;
-      const normalCreditCeiling = state.metrics.unemploymentRate < 10 && financial.bankStress < 0.62 ? 0.048 : 0.12;
-      const targetSpread = clamp(targetSpreadRaw, 0.01, normalCreditCeiling);
-      financial.creditSpread = clamp(smoothValue(safeNumber(financial.creditSpread, 0.02), targetSpread, 0.060), 0.01, 0.12);
+      return computeCreditSpreadEngine(createBankingContext());
     }
 
     function computeCreditSupply() {
-      const financial = state.financialMarket;
-      const transmission = state.macroFinancial || createInitialMacroFinancialTransmission(state.config);
-      const collateralTightening = Math.max(0, 100 - safeNumber(state.realEstate?.collateralValueIndex, 100)) * 0.22;
-      const vacancyTightening = Math.max(0, safeNumber(state.realEstate?.commercialVacancy, 0.08) - 0.12) * 55;
-      const behavioralTightening = safeNumber(state.behavior?.panicSellingPressure, 0.05) * 8 + safeNumber(state.behavior?.herdIntensity, 0.18) * Math.max(0, 0.6 - safeNumber(state.sentiment?.bankRiskAppetite, 0.7)) * 8;
-      const boomLeniency = safeNumber(state.behavior?.realEstateNeverFallsBelief, 0.46) * Math.max(0, safeNumber(state.realEstate?.collateralValueIndex, 100) - 100) * 0.035;
-      const cycle = state.creditCycle || createInitialCreditCycle();
-      const bankPsychTightening = safeNumber(financial.creditOfficerCaution, 0.28) * 13 + safeNumber(financial.bankFundingPressure, 0.12) * 16 + Math.max(0, 0.70 - safeNumber(financial.interbankTrust, 0.84)) * 22 + Math.max(0, 0.62 - safeNumber(financial.depositorConfidence, 0.88)) * 14;
-      const creditCycleAdjustment = safeNumber(cycle.creditExcessRisk, 0.12) * 7 - safeNumber(cycle.creditCrunchRisk, 0.12) * 18 + safeNumber(cycle.creditGap, 0) * 4;
-      const loanDemandSupport = clamp((safeNumber(financial.loanDemandIndex, 100) - 100) * 0.12, -5, 4);
-      const creditFloor = state.metrics.unemploymentRate < 12 && financial.bankStress < 0.66 ? 76 : 35;
-      const targetSupply = clamp(108 - financial.bankStress * 46 * CALIBRATION.creditChannelWeight - financial.creditSpread * 210 * CALIBRATION.creditChannelWeight - safeNumber(financial.liquidityStress, 0) * 24 - collateralTightening - vacancyTightening - behavioralTightening - bankPsychTightening - Math.max(0, safeNumber(transmission.riskAversion, 0.2) - 0.35) * 10 + boomLeniency + creditCycleAdjustment + loanDemandSupport + (safeNumber(state.sentiment?.bankRiskAppetite, 0.7) - 0.7) * 10 + Math.max(0, state.metrics.averageFirmProfit) / 900, creditFloor, 112);
-      financial.creditSupplyIndex = clamp(smoothValue(safeNumber(financial.creditSupplyIndex, 100), targetSupply, 0.050), 35, 112);
-      financial.bankLendingStandard = financial.creditSupplyIndex < 50 || financial.bankStress > 0.75
-        ? "위기"
-        : financial.creditSupplyIndex < 72 || financial.bankStress > 0.52
-          ? "긴축"
-          : financial.creditSupplyIndex > 103 && financial.bankStress < 0.18
-            ? "완화"
-            : "정상";
-    }
-
-    function computeSafeHavenDemand() {
-      const financial = state.financialMarket;
-      const transmission = state.macroFinancial || createInitialMacroFinancialTransmission(state.config);
-      const inflationVolatility = Math.abs(safeNumber(state.metrics.inflation, TARGET_INFLATION) - TARGET_INFLATION) / 8;
-      const assetSelloff = Math.max(0, -safeNumber(state.assetMarket?.stockReturn, 0)) * 9 + Math.max(0, -safeNumber(state.assetMarket?.housingReturn, 0)) * 7;
-      const fiscalStress = Math.max(0, 0.35 - safeNumber(transmission.fiscalSpace, state.metrics.fiscalSpaceScore || 1));
-      const unemploymentMomentum = Math.max(0, getRecentUnemploymentTrend()) / 10;
-      const stabilityRelief = Math.abs(state.metrics.inflationGap) < 0.8 && Math.abs(state.metrics.outputGap) < 2.5 && financial.bankHealthIndex > 85 ? 0.08 : 0;
-      const cycle = state.creditCycle || createInitialCreditCycle();
-      const eventSafeHaven = cycle.eventType === "safeHavenSurge" ? safeNumber(cycle.eventIntensity, 0) * 0.22 : 0;
-      const target = clamp(inflationVolatility * 0.25 + financial.bankStress * 0.33 + assetSelloff * 0.20 + fiscalStress * 0.22 + unemploymentMomentum * 0.16 + safeNumber(financial.bondMarketStress, 0.10) * 0.12 + safeNumber(cycle.creditCrunchRisk, 0.12) * 0.10 + eventSafeHaven - stabilityRelief, 0, 1);
-      financial.safeHavenDemand = clamp(smoothValue(safeNumber(financial.safeHavenDemand, 0), target, 0.055), 0, 1);
-      financial.riskAversion = clamp(smoothValue(safeNumber(financial.riskAversion, 0.2), 0.16 + financial.safeHavenDemand * 0.58 + financial.bankStress * 0.22, 0.05), 0.05, 1);
-      financial.liquidityStress = clamp(smoothValue(safeNumber(financial.liquidityStress, 0.05), financial.bankStress * 0.48 + Math.max(0, 78 - financial.creditSupplyIndex) / 100 + assetSelloff * 0.10, 0.05), 0, 1);
-    }
-
-    function computeSafeAssetMarkets() {
-      const financial = state.financialMarket;
-      const transmission = state.macroFinancial || createInitialMacroFinancialTransmission(state.config);
-      const realRate = safeNumber(transmission.bondYield, safeNumber(financial.bondYield, state.government.interestRate)) - safeNumber(state.smoothedInflation, TARGET_INFLATION) / 100;
-      const inflationHedge = Math.max(0, safeNumber(state.smoothedInflation, TARGET_INFLATION) - TARGET_INFLATION) / 100;
-      const fiscalStress = Math.max(0, 0.4 - safeNumber(transmission.fiscalSpace, state.metrics.fiscalSpaceScore || 1));
-      const goldValuationAnchor = clamp((112 - safeNumber(financial.goldIndex, 100)) / 100 * 0.0022, -0.0040, 0.0025);
-      const goldRaw = clamp(inflationHedge * 0.020 + financial.safeHavenDemand * 0.0032 + safeNumber(state.sentiment?.safeHavenSentiment, 0.1) * 0.0020 - realRate * 0.006 + fiscalStress * 0.002 + goldValuationAnchor + rand(-0.0025, 0.0025), -GOLD_RETURN_LIMIT, GOLD_RETURN_LIMIT);
-      financial.goldReturn = clamp(smoothValue(safeNumber(financial.goldReturn, 0), goldRaw, 0.28), -GOLD_RETURN_LIMIT, GOLD_RETURN_LIMIT);
-      const industrialDemand = clamp(getGDPGrowthWindow() / 100 * 0.012 + (state.metrics.outputGap / 100) * 0.004, -0.004, 0.006);
-      const silverValuationAnchor = clamp((112 - safeNumber(financial.silverIndex, 100)) / 100 * 0.0026, -0.0060, 0.0030);
-      const silverRaw = clamp(financial.goldReturn * 0.48 + industrialDemand + silverValuationAnchor + rand(-0.0045, 0.0045), -SILVER_RETURN_LIMIT, SILVER_RETURN_LIMIT);
-      financial.silverReturn = clamp(smoothValue(safeNumber(financial.silverReturn, 0), silverRaw, 0.30), -SILVER_RETURN_LIMIT, SILVER_RETURN_LIMIT);
-      financial.goldIndex = clamp(safeNumber(financial.goldIndex, 100) * (1 + financial.goldReturn), 55, 220);
-      financial.silverIndex = clamp(safeNumber(financial.silverIndex, 100) * (1 + financial.silverReturn), 40, 260);
+      return computeCreditSupplyEngine(createBankingContext());
     }
 
     function computeBankingCrisisRisk() {
-      const financial = state.financialMarket;
-      const healthRisk = clamp((70 - financial.bankHealthIndex) / 70, 0, 1);
-      const nplRisk = clamp((financial.nonPerformingLoanRatio - 0.05) / 0.14, 0, 1);
-      const spreadRisk = clamp((financial.creditSpread - 0.035) / 0.075, 0, 1);
-      const housingFallRisk = clamp(-safeNumber(state.assetMarket?.housingReturn, 0) / HOUSING_RETURN_LIMIT, 0, 1);
-      const firmStressRisk = safeNumber(state.metrics.debtStressedFirmRatio, 0) / 100;
-      const rawRisk = clamp(healthRisk * 0.34 + nplRisk * 0.24 + spreadRisk * 0.18 + housingFallRisk * 0.10 + firmStressRisk * 0.14, 0, 1);
-      financial.bankingCrisisRisk = clamp(smoothValue(safeNumber(financial.bankingCrisisRisk, 0), rawRisk, 0.06), 0, 1);
-      financial.bankingCrisisRiskLabel = financial.bankingCrisisRisk < 0.25 ? "낮음" : financial.bankingCrisisRisk < 0.50 ? "주의" : financial.bankingCrisisRisk < 0.75 ? "높음" : "위험";
-      financial.financialMarketSummary = financial.bankingCrisisRisk > 0.65
-        ? "위기 위험"
-        : safeNumber(state.creditCycle?.creditCrunchRisk, 0.12) > 0.58
-          ? "신용경색"
-          : safeNumber(state.creditCycle?.creditExcessRisk, 0.12) > 0.62
-            ? "신용 과다"
-            : safeNumber(financial.bondMarketStress, 0.10) > 0.55
-              ? "국채 스트레스"
-              : financial.bankStress > 0.52 || financial.creditSupplyIndex < 72
-                ? "스트레스"
-                : financial.loanRate > state.government.interestRate + 0.055 || financial.creditSpread > 0.045
-                  ? "긴축"
-                  : "정상";
+      return computeBankingCrisisRiskEngine(createBankingContext());
     }
 
     function syncFinancialMarketMetrics() {
-      if (!state.metrics || !state.financialMarket) return;
-      const financial = state.financialMarket;
-      state.metrics.bondYield = safeNumber(financial.bondYield, 0) * 100;
-      state.metrics.bondYield2Y = safeNumber(state.rates?.bondYield2Y, safeNumber(financial.bondYield2Y, financial.bondYield)) * 100;
-      state.metrics.bondYield5Y = safeNumber(state.rates?.bondYield5Y, safeNumber(financial.bondYield5Y, financial.bondYield)) * 100;
-      state.metrics.bondYield10Y = safeNumber(state.rates?.bondYield10Y, financial.bondYield) * 100;
-      state.metrics.bondYield30Y = safeNumber(state.rates?.bondYield30Y, safeNumber(financial.bondYield30Y, financial.bondYield)) * 100;
-      state.metrics.bondPriceIndex = safeNumber(financial.bondPriceIndex, 100);
-      state.metrics.shortBondPriceIndex = safeNumber(financial.shortBondPriceIndex, 100);
-      state.metrics.mediumBondPriceIndex = safeNumber(financial.mediumBondPriceIndex, 100);
-      state.metrics.longBondPriceIndex = safeNumber(financial.longBondPriceIndex, 100);
-      state.metrics.bondMarketStress = safeNumber(financial.bondMarketStress, 0.10);
-      state.metrics.flightToQualityDemand = safeNumber(financial.flightToQualityDemand, 0.05);
-      state.metrics.creditSpread = safeNumber(financial.creditSpread, 0.02) * 100;
-      state.metrics.bankHealthIndex = safeNumber(financial.bankHealthIndex, 100);
-      state.metrics.bankLendingStandard = financial.bankLendingStandard || "정상";
-      state.metrics.creditSupplyIndex = safeNumber(financial.creditSupplyIndex, 100);
-      state.metrics.depositorConfidence = safeNumber(financial.depositorConfidence, 0.88);
-      state.metrics.interbankTrust = safeNumber(financial.interbankTrust, 0.84);
-      state.metrics.bankFundingPressure = safeNumber(financial.bankFundingPressure, 0.12);
-      state.metrics.creditOfficerCaution = safeNumber(financial.creditOfficerCaution, 0.28);
-      state.metrics.bankCapitalConfidence = safeNumber(financial.bankCapitalConfidence, 0.82);
-      state.metrics.loanDemandIndex = safeNumber(financial.loanDemandIndex, 100);
-      state.metrics.riskUnderpricing = safeNumber(financial.riskUnderpricing, 0.12);
-      state.metrics.depositRate = safeNumber(state.rates?.depositRate, financial.depositRate) * 100;
-      state.metrics.loanRate = safeNumber(state.rates?.loanRate, financial.loanRate) * 100;
-      state.metrics.mortgageRate = safeNumber(state.rates?.mortgageRate, state.metrics.mortgageRate / 100 || 0) * 100;
-      state.metrics.corporateLoanRate = safeNumber(state.rates?.corporateLoanRate, state.metrics.corporateLoanRate / 100 || financial.loanRate) * 100;
-      state.metrics.bankStress = safeNumber(financial.bankStress, 0);
-      state.metrics.nonPerformingLoanRatio = safeNumber(financial.nonPerformingLoanRatio, 0) * 100;
-      state.metrics.goldIndex = safeNumber(financial.goldIndex, 100);
-      state.metrics.silverIndex = safeNumber(financial.silverIndex, 100);
-      state.metrics.safeHavenDemand = safeNumber(financial.safeHavenDemand, 0) * 100;
-      state.metrics.riskAversion = safeNumber(financial.riskAversion, 0.2);
-      state.metrics.liquidityStress = safeNumber(financial.liquidityStress, 0);
-      state.metrics.bankingCrisisRiskScore = safeNumber(financial.bankingCrisisRisk, 0);
-      state.metrics.bankingCrisisRiskLabel = financial.bankingCrisisRiskLabel || "낮음";
+      return syncFinancialMarketMetricsEngine(createBankingContext());
+    }
+
+    function updateCreditCycle() {
+      return updateCreditCycleEngine(createCreditCycleContext());
+    }
+
+    function triggerCreditCycleEvent(type, intensity = 0.65, message = "") {
+      return triggerCreditCycleEventEngine(createCreditCycleContext(), type, intensity, message);
+    }
+
+    function syncCreditCycleMetrics() {
+      return syncCreditCycleMetricsEngine(createCreditCycleContext());
+    }
+
+    function computeSafeHavenDemand() {
+      return computeSafeHavenDemandEngine(createSafeAssetsContext());
+    }
+
+    function computeSafeAssetMarkets() {
+      return computeSafeAssetMarketsEngine(createSafeAssetsContext());
     }
 
     function explainFinancialMarketState() {
