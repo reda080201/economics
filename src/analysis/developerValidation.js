@@ -108,7 +108,7 @@ export function createDeveloperValidationRuntime(context) {
       unemployment: safeNumber(m.unemploymentRate, 0),
       inflation: safeNumber(m.inflation, 0),
       governmentBalance: safeNumber(m.governmentBalance, 0),
-      taxRevenue: safeNumber(m.taxCollected, 0) + safeNumber(m.corporateTaxCollected, 0) + safeNumber(m.vatRevenue, 0),
+      taxRevenue: safeNumber(m.totalTaxCollected, 0),
       consumptionCapacity: safeNumber(m.lowIncomeConsumptionCapacity, 0) + safeNumber(m.middleClassConsumptionCapacity, 0)
     };
   }

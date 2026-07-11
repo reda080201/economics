@@ -1,3 +1,5 @@
+import { random } from "./mathUtils.js";
+
 export function runMonteCarloScenario(baseMetrics, runs = 30) {
   const paths = Array.from({ length: runs }, () => simulatePath(baseMetrics));
   return summarizeMonteCarloResults(paths);
@@ -39,5 +41,5 @@ function percentile(values, p) {
 }
 
 function randomNormal() {
-  return (Math.random() + Math.random() + Math.random() + Math.random() - 2) / 2;
+  return (random() + random() + random() + random() - 2) / 2;
 }

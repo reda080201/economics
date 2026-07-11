@@ -29,6 +29,7 @@ import {
   lerp,
   quadraticPoint,
   rand,
+  setRandomSource,
   round,
   roundedRect,
   safeNumber,
@@ -71,6 +72,7 @@ import {
   valuationPressureLabel
 } from "../core/formatUtils.js";
 import { createInitialAppState } from "../core/stateFactory.js";
+import { createSeededRandom } from "../core/seededRandom.js";
 import {
   createInitialAssetMarket,
   createInitialBehavioralState,
@@ -401,7 +403,7 @@ export function createApp({ document: documentRef = globalThis.document, window:
           sections: [
             { title: "실행 환경", open: true, nodes: [els.speedSlider.closest(".control-group"), els.performanceModeSelect.closest(".control-group"), els.shockBtn] },
             { title: "에이전트와 모형", open: false, nodes: [els.consumerSlider.closest(".control-group"), els.producerSlider.closest(".control-group"), els.wageSlider.closest(".control-group"), els.inflationSlider.closest(".control-group")] },
-            { title: "자동화", open: false, nodes: [els.autoPolicyToggle?.closest(".toggle-row") || els.autoPolicyToggle, els.randomPolicyEventsToggle?.closest(".toggle-row") || els.randomPolicyEventsToggle] }
+            { title: "자동화", open: false, nodes: [els.autoPolicyToggle?.closest(".toggle-row") || els.autoPolicyToggle, els.randomPolicyEventsToggle?.closest(".toggle-row") || els.randomPolicyEventsToggle, els.educationalStabilizersToggle?.closest(".toggle-row") || els.educationalStabilizersToggle] }
           ]
         },
         {
@@ -576,6 +578,7 @@ export function createApp({ document: documentRef = globalThis.document, window:
         householdIncomeTaxRate: safeNumber(Number(els.taxSlider.value), 16) / 100,
         corporateTaxRate: safeNumber(Number(els.corporateTaxSlider.value), 18) / 100,
         valueAddedTaxRate: safeNumber(Number(els.vatSlider.value), 10) / 100,
+        educationalStabilizersEnabled: els.educationalStabilizersToggle ? els.educationalStabilizersToggle.checked : true,
         taxRate: safeNumber(Number(els.taxSlider.value), 16) / 100,
         governmentSpending: safeNumber(Number(els.spendingSlider.value), 640),
         baseWage: safeNumber(Number(els.wageSlider.value), 12),
@@ -687,6 +690,7 @@ export function createApp({ document: documentRef = globalThis.document, window:
         TARGET_INFLATION,
         TARGET_UNEMPLOYMENT,
         TICKS_PER_MONTH,
+        rand,
         accuracyLabel,
         activateControlTab,
         addEventMarker,
@@ -1584,6 +1588,7 @@ export function createApp({ document: documentRef = globalThis.document, window:
     // ===== 에이전트 생성과 리셋 =====
     // 인구 수나 기업 수가 바뀌면 에이전트를 새로 만들고 모든 누적 상태를 초기화한다.
     function resetSimulation() {
+      setRandomSource(createSeededRandom(state.seed));
       resetSimulationState(createResetSimulationContext());
       clearCharts();
       pushEvent("새 경제가 생성되었습니다. 시작 버튼을 누르거나 1단계씩 진행해 보세요.");
@@ -1987,7 +1992,7 @@ export function createApp({ document: documentRef = globalThis.document, window:
       if (state.game.status !== "active" || state.game.activeEvent) return;
       if (state.game.mode === "sandbox" && state.tick < TICKS_PER_MONTH * 24) return;
       if (state.tick < state.game.nextEventTick) return;
-      if (state.game.mode === "sandbox" && Math.random() > 0.32) {
+      if (state.game.mode === "sandbox" && rand(0, 1) > 0.32) {
         state.game.nextEventTick = state.tick + Math.floor(rand(18, 34));
         return;
       }
@@ -2084,6 +2089,7 @@ export function createApp({ document: documentRef = globalThis.document, window:
         TARGET_INFLATION,
         TARGET_UNEMPLOYMENT,
         TICKS_PER_MONTH,
+        rand,
         applyInertia,
         average,
         behavioralLabel,

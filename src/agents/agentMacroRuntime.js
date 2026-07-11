@@ -31,6 +31,7 @@ export function createAgentMacroRuntime(context) {
     informationSmooth,
     perceptionGapLabel,
     riskLabel,
+    rand,
     safeNumber,
     safeValue,
     sectorLabel,
@@ -208,7 +209,7 @@ export function createAgentMacroRuntime(context) {
     const decay = Math.pow(0.5, 1 / Math.max(4, safeNumber(info.rumorHalfLife, 18)));
     info.rumorIntensity = clamp(safeNumber(info.rumorIntensity, 0) * decay, 0, 1);
     info.newsShockIntensity = clamp(safeNumber(info.newsShockIntensity, 0) * 0.92, 0, 1);
-    if (state.tick > TICKS_PER_MONTH * 6 && state.tick - safeNumber(info.lastRumorTick, -999) > TICKS_PER_MONTH * 10 && Math.random() < 0.0025) {
+    if (state.tick > TICKS_PER_MONTH * 6 && state.tick - safeNumber(info.lastRumorTick, -999) > TICKS_PER_MONTH * 10 && rand(0, 1) < 0.0025) {
       const candidates = [
         { type: "recession", label: "경기침체 우려 확산", credibility: 0.48 },
         { type: "bank", label: "은행 부실 루머", credibility: 0.42 },
@@ -218,7 +219,7 @@ export function createAgentMacroRuntime(context) {
         { type: "fiscal", label: "정부 재정 신뢰도 논란", credibility: 0.40 },
         { type: "inflation", label: "인플레이션 재가속 우려", credibility: 0.45 }
       ];
-      const rumor = candidates[Math.floor(Math.random() * candidates.length)];
+      const rumor = candidates[Math.floor(rand(0, candidates.length))];
       info.rumorType = rumor.type;
       info.rumorIntensity = clamp(info.rumorIntensity + rand(0.18, 0.36), 0, 1);
       info.rumorCredibility = clamp(rumor.credibility + safeNumber(state.financialMarket?.bankStress, 0) * 0.15 + safeNumber(state.sentiment?.policyUncertainty, 0.1) * 0.10, 0.15, 0.85);

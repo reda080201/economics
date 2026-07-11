@@ -12,7 +12,7 @@ export function cacheElements(els, documentRef = document) {
     "interestValue", "interestSlider", "taxValue", "taxSlider", "corporateTaxValue",
     "corporateTaxSlider", "vatValue", "vatSlider", "spendingValue", "spendingSlider",
     "wageValue", "wageSlider", "inflationSensitivityValue", "inflationSlider", "scenarioSelect",
-    "applyScenarioBtn", "historicalScenarioBtn", "autoPolicyToggle", "randomPolicyEventsToggle"
+    "applyScenarioBtn", "historicalScenarioBtn", "autoPolicyToggle", "randomPolicyEventsToggle", "educationalStabilizersToggle"
   ]);
 
   cacheElementIds([

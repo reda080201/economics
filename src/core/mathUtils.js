@@ -1,5 +1,27 @@
+let randomSource = () => Math.random();
+
+export function setRandomSource(source) {
+  randomSource = typeof source === "function" ? source : () => Math.random();
+}
+
+export function resetRandomSource() {
+  randomSource = () => Math.random();
+}
+
+export function random() {
+  return randomSource();
+}
+
+export function getRandomState() {
+  return typeof randomSource.getState === "function" ? randomSource.getState() : null;
+}
+
+export function setRandomState(value) {
+  if (typeof randomSource.setState === "function" && Number.isFinite(value)) randomSource.setState(value);
+}
+
 export function rand(min, max) {
-  return Math.random() * (max - min) + min;
+  return random() * (max - min) + min;
 }
 
 export function clamp(value, min, max) {
@@ -71,7 +93,7 @@ export function unique(values) {
 export function shuffle(values) {
   const copy = [...values];
   for (let i = copy.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(random() * (i + 1));
     [copy[i], copy[j]] = [copy[j], copy[i]];
   }
   return copy;

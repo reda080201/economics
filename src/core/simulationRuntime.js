@@ -1,3 +1,5 @@
+import { getRandomState, setRandomState } from "./mathUtils.js";
+
 function readControlValue(els, key) {
   return els?.[key]?.value ?? "";
 }
@@ -21,7 +23,8 @@ export function captureSimulationSnapshot(state, els) {
   return {
     json: JSON.stringify(state, (key, value) => key === "charts" ? undefined : value),
     charts,
-    controls
+    controls,
+    randomState: getRandomState()
   };
 }
 
@@ -31,6 +34,7 @@ export function restoreSimulationSnapshot(state, els, snapshot, updateControlLab
   Object.keys(state).forEach((key) => delete state[key]);
   Object.assign(state, restored);
   state.charts = snapshot.charts || {};
+  setRandomState(snapshot.randomState);
   if (snapshot.controls) {
     writeControlValue(els, "interestSlider", snapshot.controls.interest);
     writeControlValue(els, "taxSlider", snapshot.controls.tax);

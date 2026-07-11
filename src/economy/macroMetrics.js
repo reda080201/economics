@@ -22,7 +22,10 @@ export function updateMacroMetricsEngine(context) {
     ? ((averagePriceRaw - state.previousAveragePrice) / state.previousAveragePrice) * 100
     : 0;
   const currentUnemploymentForAnchor = calculateUnemploymentRate();
-  const inflationAnchor = currentUnemploymentForAnchor < 10 && getGDPGrowthWindow() > -4
+  const stabilizersEnabled = state.config?.educationalStabilizersEnabled !== false;
+  const inflationAnchor = !stabilizersEnabled
+    ? 0
+    : currentUnemploymentForAnchor < 10 && getGDPGrowthWindow() > -4
     ? clamp((TARGET_INFLATION - state.smoothedInflation) * 1.45, -0.10, 2.20)
     : clamp((TARGET_INFLATION - state.smoothedInflation) * 0.25, -0.08, 0.45);
   state.smoothedInflation = clamp(smoothValue(state.smoothedInflation, rawInflation + inflationAnchor, 0.20), -4.5, 7.5);
@@ -77,6 +80,7 @@ export function updateMacroMetricsEngine(context) {
   state.government.fiscalSpaceLabel = fiscalSpaceLabel;
 
   state.metrics.gdp = gdpLike;
+  state.metrics.netExports = safeNumber(state.metrics.exportSales, 0) - safeNumber(state.metrics.importCosts, 0);
   state.metrics.outputValue = productionValue;
   state.metrics.unemploymentRate = (1 - employedCount / Math.max(1, state.consumers.length)) * 100;
   state.metrics.employedCount = employedCount;
@@ -161,7 +165,12 @@ export function updateMacroMetricsEngine(context) {
 }
 
 export function computeGDP(state) {
-  return state.metrics.consumption + state.metrics.investment + state.metrics.governmentGDPSpending;
+  const consumption = safeNumber(state.metrics.consumption, 0);
+  const investment = safeNumber(state.metrics.investment, 0);
+  const governmentSpending = safeNumber(state.metrics.governmentGDPSpending, 0);
+  const exports = safeNumber(state.metrics.exportSales, 0);
+  const imports = safeNumber(state.metrics.importCosts, 0);
+  return consumption + investment + governmentSpending + exports - imports;
 }
 
 function updateTaxSentimentMetrics(state) {

@@ -1,5 +1,5 @@
 import { NEUTRAL_INTEREST_RATE, TARGET_INFLATION } from "../core/config.js";
-import { clamp, safeNumber } from "../core/mathUtils.js";
+import { clamp, rand, safeNumber } from "../core/mathUtils.js";
 
 export function getSectorProfile(sector) {
   const profiles = {
@@ -51,7 +51,7 @@ export function getSectorBehaviorMultiplier(producer, state) {
 
 export function weightedPick(entries) {
   const total = entries.reduce((acc, [, weight]) => acc + weight, 0);
-  let roll = Math.random() * Math.max(0.0001, total);
+  let roll = rand(0, Math.max(0.0001, total));
   for (const [value, weight] of entries) {
     roll -= weight;
     if (roll <= 0) return value;

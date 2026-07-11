@@ -521,7 +521,7 @@ export function createLegacyRuntimeImpl(context) {
   function createConsumers(count) {
     const preferences = ["budget", "balanced", "quality"];
     return Array.from({ length: count }, (_, id) => {
-      const segmentRoll = Math.random();
+      const segmentRoll = rand(0, 1);
       const incomeSegment = segmentRoll < 0.35 ? "low" : segmentRoll < 0.75 ? "middle" : segmentRoll < 0.93 ? "high" : "wealthy";
       const incomeClass = incomeSegment === "low" ? "저소득층" : incomeSegment === "middle" ? "중산층" : incomeSegment === "high" ? "고소득층" : "자산가";
       const consumptionPropensity = incomeSegment === "low"
@@ -540,7 +540,7 @@ export function createLegacyRuntimeImpl(context) {
           ? rand(170, 420)
           : incomeSegment === "high" ? rand(360, 820) : rand(700, 1600);
       const homeownerProbability = incomeSegment === "low" ? 0.22 : incomeSegment === "middle" ? 0.58 : incomeSegment === "high" ? 0.78 : 0.92;
-      const ownsHome = Math.random() < homeownerProbability;
+      const ownsHome = rand(0, 1) < homeownerProbability;
       const stockHoldings = incomeSegment === "low"
         ? rand(0, 90)
         : incomeSegment === "middle"
@@ -586,7 +586,7 @@ export function createLegacyRuntimeImpl(context) {
         income: 0,
         consumptionPropensity,
         savingsPropensity: clamp(1 - consumptionPropensity + rand(-0.06, 0.06), 0.08, 0.55),
-        debt: Math.random() < (incomeSegment === "low" ? 0.46 : incomeSegment === "middle" ? 0.34 : 0.22) ? rand(40, creditLimit * 1.25) : 0,
+        debt: rand(0, 1) < (incomeSegment === "low" ? 0.46 : incomeSegment === "middle" ? 0.34 : 0.22) ? rand(40, creditLimit * 1.25) : 0,
         interestSensitivity: rand(0.75, 2.25),
         employed: false,
         employerId: null,
@@ -642,9 +642,9 @@ export function createLegacyRuntimeImpl(context) {
       const propertyExposure = propertyTypes[Math.floor(rand(0, propertyTypes.length))];
       const sector = weightedPick(sectorWeights);
       let firmStrategy = weightedPick(strategyWeights);
-      if (sector === "technology" && Math.random() < 0.45) firmStrategy = "고성장형";
-      if (sector === "financial" && Math.random() < 0.42) firmStrategy = "현금보수형";
-      if ((sector === "agriculture" || sector === "energy" || sector === "staples") && Math.random() < 0.35) firmStrategy = "배당·자사주형";
+      if (sector === "technology" && rand(0, 1) < 0.45) firmStrategy = "고성장형";
+      if (sector === "financial" && rand(0, 1) < 0.42) firmStrategy = "현금보수형";
+      if ((sector === "agriculture" || sector === "energy" || sector === "staples") && rand(0, 1) < 0.35) firmStrategy = "배당·자사주형";
       const commercialPropertyValue = propertyExposure === "propertyOwner" || propertyExposure === "leveragedProperty" ? rand(500, 2200) : 0;
       const sectorProfile = getSectorProfile(sector);
       return {
@@ -678,7 +678,7 @@ export function createLegacyRuntimeImpl(context) {
         productionCapacity: rand(18, 38),
         investmentPropensity: rand(0.035, 0.115),
         productivity: rand(1.0, 1.9),
-        debt: Math.random() < 0.28 ? rand(120, 760) : 0,
+        debt: rand(0, 1) < 0.28 ? rand(120, 760) : 0,
         employees: [],
         expectedDemand: rand(10, 26),
         expectedInflation: rand(0.00, 0.18),
@@ -743,6 +743,9 @@ export function createLegacyRuntimeImpl(context) {
       outputValue: 0,
       consumption: 0,
       investment: 0,
+      exportSales: 0,
+      importCosts: 0,
+      netExports: 0,
       unemploymentRate: 0,
       employedCount: 0,
       averagePrice: 0,

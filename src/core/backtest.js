@@ -73,15 +73,15 @@ export function simulateBacktestPath(dataset, parameters = defaultModelParameter
       disposableIncome: 1 - householdDebtPressure,
       wealth: exportGrowth / 10,
       confidence: clamp(1 - policyRate / 12 - Math.max(0, debtPressure - 0.7), -1, 1),
-      interestRate: -policyRate / 10,
-      debtBurden: -householdDebtPressure
+      interestRate: policyRate / 10,
+      debtBurden: householdDebtPressure
     }, parameters);
     const investmentSignal = calculateInvestment({
       expectedDemand: exportGrowth / 6,
       profit: previousGdpGrowth / 5,
       capacityUtilization: outputGapProxy / 4,
-      interestRate: -policyRate / 10,
-      uncertainty: -Math.max(0, debtPressure - 0.7)
+      interestRate: policyRate / 10,
+      uncertainty: Math.max(0, debtPressure - 0.7)
     }, parameters);
     const inflationSignal = calculateInflationPressure({
       demandGap: outputGapProxy,

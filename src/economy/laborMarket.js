@@ -127,7 +127,7 @@ export function updateLaborMarket(context) {
     let naturalSeparation = false;
     if (isMonthlyDecision && unemploymentRate < 0.065 && producer.employees.length > minimumEmployees + 1) {
       const separationChance = unemploymentRate < 0.03 ? 0.46 : unemploymentRate < 0.045 ? 0.36 : 0.24;
-      if (Math.random() < separationChance) {
+      if (rand(0, 1) < separationChance) {
         const workerId = producer.employees[producer.employees.length - 1];
         const worker = state.consumers[workerId];
         if (worker) {
@@ -176,7 +176,7 @@ export function updateLaborMarket(context) {
     producer.firingCooldownTicks = Math.max(0, safeNumber(producer.firingCooldownTicks, 0) - 1);
 
     // 자연 실업 앵커: 완전고용에 가까워지면 이직/구직 마찰이 조금 생겨 실업률이 0%로 붙지 않는다.
-    if (isMonthlyDecision && veryTightLabor && producer.employees.length > minimumEmployees + 1 && Math.random() < (unemploymentRate < 0.04 ? 0.46 : 0.28)) {
+    if (state.config?.educationalStabilizersEnabled !== false && isMonthlyDecision && veryTightLabor && producer.employees.length > minimumEmployees + 1 && rand(0, 1) < (unemploymentRate < 0.04 ? 0.46 : 0.28)) {
       const employeeId = producer.employees[Math.floor(rand(0, producer.employees.length))];
       if (employeeId !== undefined) {
         fireConsumer(context, producer, state.consumers[employeeId]);
@@ -187,7 +187,7 @@ export function updateLaborMarket(context) {
 
   if (isMonthlyDecision) {
     const currentUnemployment = calculateUnemploymentRate() / 100;
-    if (currentUnemployment < 0.060) {
+    if (state.config?.educationalStabilizersEnabled !== false && currentUnemployment < 0.060) {
       const neededSeparations = Math.min(5, Math.ceil((0.060 - currentUnemployment) * state.consumers.length));
       const employedConsumers = shuffle(state.consumers.filter((consumer) => consumer.employed));
       let separated = 0;

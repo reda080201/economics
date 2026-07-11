@@ -2,6 +2,7 @@ import { cloneModelParameters, defaultModelParameters } from "./modelParameters.
 
 export function createInitialAppState() {
   return {
+    seed: 12345,
     running: false,
     tick: 0,
     consumers: [],

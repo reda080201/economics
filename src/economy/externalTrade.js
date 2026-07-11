@@ -49,11 +49,13 @@ export function executeExternalTrade(context) {
     producer.revenueTick += revenue;
     producer.unitsSoldTick += units;
     exportSales += revenue;
-    state.metrics.consumption += revenue * 0.10;
+    state.metrics.exportSales = safeNumber(state.metrics.exportSales, 0) + revenue;
     state.metrics.unitsSold += units;
   });
 
-  state.metrics.exportSales = safeNumber(state.metrics.exportSales, 0) + exportSales;
+  state.metrics.exportSales = safeNumber(state.metrics.exportSales, 0);
+  state.metrics.importCosts = computeCurrentImportCosts(state);
+  state.metrics.netExports = state.metrics.exportSales - state.metrics.importCosts;
   if (state.external) state.external.tradeBalance = smoothValue(safeNumber(state.external.tradeBalance, 0), safeNumber(state.external.tradeBalance, 0) + exportSales, 0.05);
 }
 
@@ -100,11 +102,22 @@ export function updateExternalSector(context) {
   e.energyPriceIndex = clamp(smoothValue(e.energyPriceIndex, 100 + (e.commodityPriceIndex - 100) * 0.58 + externalRisk * 8 + safeNumber(state.shock.pricePressure, 0) * 22 + actors.foreignSuppliers.deliveryStress * 10, 0.040), 60, 245);
   const exportRevenue = sum(state.producers.map((p) => safeNumber(p.exportExposure, 0) * safeNumber(p.revenueTick + p.govRevenueTick, 0) * (e.exportDemand / 100)));
   const importCosts = sum(state.producers.map((p) => (safeNumber(p.importCostExposure, 0) * (e.importPriceIndex - 100) + safeNumber(p.energyCostExposure, 0) * (e.energyPriceIndex - 100)) * 0.010 * Math.max(0, p.productionTick * p.price)));
+  state.metrics.importCosts = safeNumber(state.metrics.importCosts, 0) || importCosts;
   e.tradeBalance = smoothValue(safeNumber(e.tradeBalance, 0), exportRevenue - importCosts, 0.10);
   e.importInflationPressure = clamp((e.importPriceIndex - 100) / 100 * 2.4 * CALIBRATION.externalShockWeight, -1, 4.5);
   e.commodityCostPressure = clamp(((e.commodityPriceIndex + e.energyPriceIndex) / 2 - 100) / 100 * 3.0 * CALIBRATION.externalShockWeight, -1, 6);
   e.externalShockPressure = clamp(Math.max(0, e.importInflationPressure) * 0.24 + Math.max(0, e.commodityCostPressure) * 0.18 + externalRisk * 0.20 + actors.foreignSuppliers.pressure * 0.12 + actors.foreignBondholders.fundingPressure * 0.08, 0, 1);
   syncExternalMetrics(context);
+}
+
+function computeCurrentImportCosts(state) {
+  const external = state.external || {};
+  const importPriceIndex = safeNumber(external.importPriceIndex, 100);
+  const energyPriceIndex = safeNumber(external.energyPriceIndex, 100);
+  return sum(state.producers.map((producer) => (
+    safeNumber(producer.importCostExposure, 0) * Math.max(0, importPriceIndex - 100) +
+    safeNumber(producer.energyCostExposure, 0) * Math.max(0, energyPriceIndex - 100)
+  ) * 0.010 * Math.max(0, safeNumber(producer.productionTick, 0) * safeNumber(producer.price, 0))));
 }
 
 export function syncExternalMetrics(context) {
