@@ -30,6 +30,7 @@ export function updateLaborMarket(context) {
   const highUnemployment = unemploymentRate > 0.20;
   const severeUnemployment = unemploymentRate > 0.35;
   const veryTightLabor = unemploymentRate < 0.075;
+  const stabilizersEnabled = state.config?.educationalStabilizersEnabled !== false;
   const sentiment = state.sentiment || createInitialSentimentState();
 
   state.producers.forEach((producer) => {
@@ -72,15 +73,17 @@ export function updateLaborMarket(context) {
     const hiringFrozen = producer.hiringFreezeTicks > 0 && !partialHiringAllowed;
     const minimumEmployees = clamp(Math.floor(producer.productionCapacity / 8), 1, 8);
     const demandBasedTarget = Math.round(demandSignal / Math.max(1.5, producer.productivity * 2.15));
-    const naturalUnemploymentFriction = unemploymentRate < 0.04
+    const naturalUnemploymentFriction = !stabilizersEnabled
+      ? 1
+      : unemploymentRate < 0.04
       ? 0.72
       : unemploymentRate < 0.06
         ? 0.84
         : 1;
-    const employmentAnchor = recoveryUnemployment && inventoryRatio < 2.15 && producer.lastProfit > -180
+    const employmentAnchor = stabilizersEnabled && recoveryUnemployment && inventoryRatio < 2.15 && producer.lastProfit > -180
       ? clamp(Math.floor(producer.productionCapacity / 1.80), minimumEmployees, 22)
       : minimumEmployees;
-    const recoveryHiringBoost = recoveryUnemployment && inventoryRatio < 1.9 && producer.cash > producer.wageOffered * Math.max(2, minimumEmployees) * 1.35
+    const recoveryHiringBoost = stabilizersEnabled && recoveryUnemployment && inventoryRatio < 1.9 && producer.cash > producer.wageOffered * Math.max(2, minimumEmployees) * 1.35
       ? (severeUnemployment ? 1.30 : highUnemployment ? 1.18 : 1.08)
       : 1;
     const dragAverage = (
@@ -125,7 +128,7 @@ export function updateLaborMarket(context) {
     const shouldFireForLosses = (producer.negativeProfitMonths || 0) >= 3 && (producer.lastProfit < -140 || producer.profitTrend < -210);
     // 자연실업 앵커: 노동시장이 지나치게 타이트할 때는 대량해고 대신 소규모 자연 이직과 채용 마찰로 5~6% 균형에 천천히 접근한다.
     let naturalSeparation = false;
-    if (isMonthlyDecision && unemploymentRate < 0.065 && producer.employees.length > minimumEmployees + 1) {
+    if (stabilizersEnabled && isMonthlyDecision && unemploymentRate < 0.065 && producer.employees.length > minimumEmployees + 1) {
       const separationChance = unemploymentRate < 0.03 ? 0.46 : unemploymentRate < 0.045 ? 0.36 : 0.24;
       if (rand(0, 1) < separationChance) {
         const workerId = producer.employees[producer.employees.length - 1];
@@ -140,8 +143,8 @@ export function updateLaborMarket(context) {
     const canHire = !naturalSeparation && gap > 0 && !hiringFrozen && producer.lastProfit > -95 && inventoryRatio < 2.60;
     let monthlyHireAllowance = isMonthlyDecision ? (severeUnemployment ? 4 : highUnemployment ? 3 : recoveryUnemployment ? 2 : 1) : (highUnemployment ? 1 : 0);
     if (partialHiringAllowed) monthlyHireAllowance = Math.max(monthlyHireAllowance, 1);
-    if (unemploymentRate < 0.065) monthlyHireAllowance = Math.min(monthlyHireAllowance, unemploymentRate < 0.045 ? 0 : 1);
-    if (veryTightLabor && producer.employees.length > minimumEmployees) monthlyHireAllowance = 0;
+    if (stabilizersEnabled && unemploymentRate < 0.065) monthlyHireAllowance = Math.min(monthlyHireAllowance, unemploymentRate < 0.045 ? 0 : 1);
+    if (stabilizersEnabled && veryTightLabor && producer.employees.length > minimumEmployees) monthlyHireAllowance = 0;
 
     if (canHire && monthlyHireAllowance > 0) {
       const workers = availableWorkers();
@@ -157,7 +160,7 @@ export function updateLaborMarket(context) {
       }
     } else if (isMonthlyDecision && (gap < 0 || shouldFireForInventory || shouldFireForLosses) && (producer.firingCooldownTicks || 0) <= 0) {
       const pressureFires = shouldFireForInventory || shouldFireForLosses ? 1 : 0;
-      const stabilizerFireBrake = severeUnemployment ? 0.10 : highUnemployment ? 0.28 : recoveryUnemployment ? 0.15 : 1;
+      const stabilizerFireBrake = stabilizersEnabled ? (severeUnemployment ? 0.10 : highUnemployment ? 0.28 : recoveryUnemployment ? 0.15 : 1) : 1;
       const maxFires = 1;
       const fireableEmployees = canFallBelowMinimum ? producer.employees.length : Math.max(0, producer.employees.length - employmentAnchor);
       const rawFires = Math.min(Math.ceil((Math.abs(gap) + pressureFires) * stabilizerFireBrake), maxFires, fireableEmployees);
@@ -176,7 +179,7 @@ export function updateLaborMarket(context) {
     producer.firingCooldownTicks = Math.max(0, safeNumber(producer.firingCooldownTicks, 0) - 1);
 
     // 자연 실업 앵커: 완전고용에 가까워지면 이직/구직 마찰이 조금 생겨 실업률이 0%로 붙지 않는다.
-    if (state.config?.educationalStabilizersEnabled !== false && isMonthlyDecision && veryTightLabor && producer.employees.length > minimumEmployees + 1 && rand(0, 1) < (unemploymentRate < 0.04 ? 0.46 : 0.28)) {
+    if (stabilizersEnabled && isMonthlyDecision && veryTightLabor && producer.employees.length > minimumEmployees + 1 && rand(0, 1) < (unemploymentRate < 0.04 ? 0.46 : 0.28)) {
       const employeeId = producer.employees[Math.floor(rand(0, producer.employees.length))];
       if (employeeId !== undefined) {
         fireConsumer(context, producer, state.consumers[employeeId]);
@@ -187,7 +190,7 @@ export function updateLaborMarket(context) {
 
   if (isMonthlyDecision) {
     const currentUnemployment = calculateUnemploymentRate() / 100;
-    if (state.config?.educationalStabilizersEnabled !== false && currentUnemployment < 0.060) {
+    if (stabilizersEnabled && currentUnemployment < 0.060) {
       const neededSeparations = Math.min(5, Math.ceil((0.060 - currentUnemployment) * state.consumers.length));
       const employedConsumers = shuffle(state.consumers.filter((consumer) => consumer.employed));
       let separated = 0;

@@ -142,8 +142,8 @@ function runRealEconomyPhase(callbacks) {
   callbacks.produceGoods();
   callbacks.executeGovernmentSpending();
   callbacks.executeConsumerPurchases();
-  callbacks.executeExternalTrade();
   callbacks.executeProducerInvestment();
+  callbacks.executeExternalTrade();
   callbacks.adjustProducerPricesAndExpectations();
   callbacks.collectProfitTaxes();
   callbacks.updateMacroMetrics();
@@ -171,7 +171,6 @@ function runDiagnosticPhase(callbacks) {
   callbacks.updateEarlyWarningSystem();
   callbacks.advanceHistoricalScenarioTimeline();
   callbacks.syncHistoricalScenarioMetrics();
-  callbacks.updateTaxSentimentMetrics();
   callbacks.updateVulnerabilitySystem();
 }
 

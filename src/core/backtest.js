@@ -5,6 +5,12 @@ import {
   calculateInvestment,
   calculateUnemploymentChange
 } from "../economy/responseFunctions.js";
+import {
+  normalizeConsumptionConfidence,
+  normalizeInvestmentCapacity,
+  normalizeInvestmentUncertainty,
+  normalizeRealRate
+} from "../economy/responseNormalization.js";
 import { rmse, toGrowthRate } from "../data/transformations.js";
 
 export function runBacktest(dataset, parameters = defaultModelParameters, options = {}) {
@@ -44,7 +50,8 @@ export function runBacktest(dataset, parameters = defaultModelParameters, option
     simulated,
     actual,
     rmseBySeries,
-    method: "recursive_response_function_simulation"
+    method: "recursive_response_function_simulation",
+    normalization: "shared_runtime_scale"
   };
 }
 
@@ -69,19 +76,23 @@ export function simulateBacktestPath(dataset, parameters = defaultModelParameter
     const previousGdpGrowth = pctChange(simulated.gdp[i - 1], simulated.gdp[Math.max(0, i - 2)] || simulated.gdp[i - 1]);
     const previousInflation = pctChange(simulated.cpi[i - 1], simulated.cpi[Math.max(0, i - 2)] || simulated.cpi[i - 1]);
     const outputGapProxy = previousGdpGrowth - 2;
+    const confidenceIndex = 1 - policyRate / 12 - Math.max(0, debtPressure - 0.7);
+    const capacityUtilization = 0.78 + outputGapProxy / 100;
+    const uncertainty = Math.max(0, debtPressure - 0.7);
+    const realRate = normalizeRealRate(policyRate - previousInflation);
     const consumptionSignal = calculateConsumption({
       disposableIncome: 1 - householdDebtPressure,
       wealth: exportGrowth / 10,
-      confidence: clamp(1 - policyRate / 12 - Math.max(0, debtPressure - 0.7), -1, 1),
-      interestRate: policyRate / 10,
+      confidence: normalizeConsumptionConfidence(confidenceIndex),
+      interestRate: realRate,
       debtBurden: householdDebtPressure
     }, parameters);
     const investmentSignal = calculateInvestment({
       expectedDemand: exportGrowth / 6,
       profit: previousGdpGrowth / 5,
-      capacityUtilization: outputGapProxy / 4,
-      interestRate: policyRate / 10,
-      uncertainty: Math.max(0, debtPressure - 0.7)
+      capacityUtilization: normalizeInvestmentCapacity(capacityUtilization),
+      interestRate: realRate,
+      uncertainty: normalizeInvestmentUncertainty(uncertainty)
     }, parameters);
     const inflationSignal = calculateInflationPressure({
       demandGap: outputGapProxy,
@@ -95,7 +106,8 @@ export function simulateBacktestPath(dataset, parameters = defaultModelParameter
       firmStress: Math.max(0, debtPressure - 0.7),
       hiringMomentum: previousGdpGrowth / 6
     }, parameters);
-    const gdpGrowth = clamp(previousGdpGrowth * 0.35 + consumptionSignal * 0.32 + investmentSignal * 0.26 + exportGrowth * 0.18, -8, 8);
+    const rawGdpGrowth = previousGdpGrowth * 0.35 + consumptionSignal * 0.32 + investmentSignal * 0.26 + exportGrowth * 0.18;
+    const gdpGrowth = softLimit(rawGdpGrowth, 10);
     const inflation = clamp(previousInflation * 0.35 + inflationSignal * 0.40 + policyRate * -0.05, -3, 12);
     const unemploymentChange = clamp(unemploymentSignal * 0.38 + policyRate * 0.035, -2.5, 3.5);
     simulated.gdp.push(Math.max(1, simulated.gdp[i - 1] * (1 + gdpGrowth / 100)));
@@ -207,4 +219,9 @@ function hasNonCopiedSimulation(simulated, actual) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
+}
+
+function softLimit(value, limit) {
+  const safeValue = Number.isFinite(value) ? value : 0;
+  return limit * Math.tanh(safeValue / limit);
 }

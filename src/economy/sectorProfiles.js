@@ -3,16 +3,24 @@ import { clamp, rand, safeNumber } from "../core/mathUtils.js";
 
 export function getSectorProfile(sector) {
   const profiles = {
-    manufacturing: { exportExposure: 0.42, importCostExposure: 0.36, energyCostExposure: 0.30, wageCostShare: 0.34, interestSensitivity: 0.88, demandSensitivity: 1.05, assetSensitivity: 0.55, creditSensitivity: 0.92, productivityTrend: 0.004 },
-    services: { exportExposure: 0.08, importCostExposure: 0.10, energyCostExposure: 0.12, wageCostShare: 0.58, interestSensitivity: 0.65, demandSensitivity: 1.18, assetSensitivity: 0.38, creditSensitivity: 0.62, productivityTrend: 0.002 },
-    agriculture: { exportExposure: 0.12, importCostExposure: 0.24, energyCostExposure: 0.38, wageCostShare: 0.30, interestSensitivity: 0.52, demandSensitivity: 0.72, assetSensitivity: 0.25, creditSensitivity: 0.62, productivityTrend: 0.001 },
-    energy: { exportExposure: 0.20, importCostExposure: 0.18, energyCostExposure: 0.12, wageCostShare: 0.24, interestSensitivity: 0.82, demandSensitivity: 0.88, assetSensitivity: 0.70, creditSensitivity: 0.85, productivityTrend: 0.002 },
-    construction: { exportExposure: 0.02, importCostExposure: 0.22, energyCostExposure: 0.24, wageCostShare: 0.42, interestSensitivity: 1.38, demandSensitivity: 1.25, assetSensitivity: 1.20, creditSensitivity: 1.32, productivityTrend: 0.001 },
-    financial: { exportExposure: 0.04, importCostExposure: 0.04, energyCostExposure: 0.03, wageCostShare: 0.38, interestSensitivity: 1.05, demandSensitivity: 0.78, assetSensitivity: 1.05, creditSensitivity: 1.42, productivityTrend: 0.002 },
-    technology: { exportExposure: 0.24, importCostExposure: 0.18, energyCostExposure: 0.08, wageCostShare: 0.46, interestSensitivity: 1.55, demandSensitivity: 1.12, assetSensitivity: 1.45, creditSensitivity: 1.08, productivityTrend: 0.009 },
-    staples: { exportExposure: 0.10, importCostExposure: 0.20, energyCostExposure: 0.18, wageCostShare: 0.32, interestSensitivity: 0.48, demandSensitivity: 0.62, assetSensitivity: 0.30, creditSensitivity: 0.45, productivityTrend: 0.002 }
+    manufacturing: { exportExposure: 0.42, importCostExposure: 0.36, energyCostExposure: 0.30, intermediateImportShare: 0.30, energyImportShare: 0.16, wageCostShare: 0.34, interestSensitivity: 0.88, demandSensitivity: 1.05, assetSensitivity: 0.55, creditSensitivity: 0.92, productivityTrend: 0.004 },
+    services: { exportExposure: 0.08, importCostExposure: 0.10, energyCostExposure: 0.12, intermediateImportShare: 0.18, energyImportShare: 0.08, wageCostShare: 0.58, interestSensitivity: 0.65, demandSensitivity: 1.18, assetSensitivity: 0.38, creditSensitivity: 0.62, productivityTrend: 0.002 },
+    agriculture: { exportExposure: 0.12, importCostExposure: 0.24, energyCostExposure: 0.38, intermediateImportShare: 0.24, energyImportShare: 0.22, wageCostShare: 0.30, interestSensitivity: 0.52, demandSensitivity: 0.72, assetSensitivity: 0.25, creditSensitivity: 0.62, productivityTrend: 0.001 },
+    energy: { exportExposure: 0.20, importCostExposure: 0.18, energyCostExposure: 0.12, intermediateImportShare: 0.20, energyImportShare: 0.28, wageCostShare: 0.24, interestSensitivity: 0.82, demandSensitivity: 0.88, assetSensitivity: 0.70, creditSensitivity: 0.85, productivityTrend: 0.002 },
+    construction: { exportExposure: 0.02, importCostExposure: 0.22, energyCostExposure: 0.24, intermediateImportShare: 0.26, energyImportShare: 0.14, wageCostShare: 0.42, interestSensitivity: 1.38, demandSensitivity: 1.25, assetSensitivity: 1.20, creditSensitivity: 1.32, productivityTrend: 0.001 },
+    financial: { exportExposure: 0.04, importCostExposure: 0.04, energyCostExposure: 0.03, intermediateImportShare: 0.08, energyImportShare: 0.03, wageCostShare: 0.38, interestSensitivity: 1.05, demandSensitivity: 0.78, assetSensitivity: 1.05, creditSensitivity: 1.42, productivityTrend: 0.002 },
+    technology: { exportExposure: 0.24, importCostExposure: 0.18, energyCostExposure: 0.08, intermediateImportShare: 0.34, energyImportShare: 0.06, wageCostShare: 0.46, interestSensitivity: 1.55, demandSensitivity: 1.12, assetSensitivity: 1.45, creditSensitivity: 1.08, productivityTrend: 0.009 },
+    staples: { exportExposure: 0.10, importCostExposure: 0.20, energyCostExposure: 0.18, intermediateImportShare: 0.20, energyImportShare: 0.12, wageCostShare: 0.32, interestSensitivity: 0.48, demandSensitivity: 0.62, assetSensitivity: 0.30, creditSensitivity: 0.45, productivityTrend: 0.002 }
   };
   return profiles[sector] || profiles.services;
+}
+
+export function getImportFlowProfile(sector) {
+  const profile = getSectorProfile(sector);
+  return {
+    intermediateImportShare: safeNumber(profile.intermediateImportShare, safeNumber(profile.importCostExposure, 0) * 0.75),
+    energyImportShare: safeNumber(profile.energyImportShare, safeNumber(profile.energyCostExposure, 0) * 0.55)
+  };
 }
 
 export function getSectorBehaviorMultiplier(producer, state) {

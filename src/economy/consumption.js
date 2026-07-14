@@ -155,6 +155,29 @@ export function executeConsumerPurchases(context) {
     remainingBudget = Math.max(remainingBudget, minimumConsumptionFloor);
     if (stressMemory > 0.88) remainingBudget *= clamp(1 - (stressMemory - 0.88) * 3.0, 0.38, 1);
 
+    // Imported final goods are part of household consumption but leak out of domestic GDP through M.
+    const importPriceFactor = clamp(safeNumber(state.external?.importPriceIndex, 100) / 100, 0.70, 1.85);
+    const importedGoodsShare = clamp(0.14 * importPriceFactor, 0.06, 0.26);
+    const importedGrossSpend = Math.min(remainingBudget * importedGoodsShare, consumer.cash);
+    const importedNetSpend = importedGrossSpend / Math.max(1, 1 + vatRate);
+    const importedVat = importedGrossSpend - importedNetSpend;
+    if (importedNetSpend > 0.001) {
+      consumer.cash -= importedGrossSpend;
+      consumer.lastSpent += importedGrossSpend;
+      consumer.lastTax += importedVat;
+      remainingBudget -= importedGrossSpend;
+      state.metrics.consumption += importedNetSpend;
+      state.metrics.consumerGoodsImports += importedNetSpend;
+      if (importedVat > 0) {
+        state.government.taxCollectedTick += importedVat;
+        state.government.valueAddedTaxCollectedTick += importedVat;
+        state.metrics.valueAddedTaxCollected += importedVat;
+        state.metrics.totalTaxCollected += importedVat;
+        recordFlow("consumer", consumer.id, "government", 0, importedVat, "tax");
+      }
+      recordFlow("consumer", consumer.id, "foreign", 0, importedNetSpend, "import");
+    }
+
     for (let round = 0; round < 2 && remainingBudget > averagePrice * 0.25; round += 1) {
       const producer = chooseProducerForConsumer(context, consumer, averagePrice);
       if (!producer) break;

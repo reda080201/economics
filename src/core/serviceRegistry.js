@@ -57,7 +57,6 @@ export function createSimulationServices(input) {
       updateEarlyWarningSystem: callbacks.updateEarlyWarningSystem,
       advanceHistoricalScenarioTimeline: callbacks.advanceHistoricalScenarioTimeline,
       syncHistoricalScenarioMetrics: callbacks.syncHistoricalScenarioMetrics,
-      updateTaxSentimentMetrics: callbacks.updateTaxSentimentMetrics,
       updateVulnerabilitySystem: callbacks.updateVulnerabilitySystem,
       updateGameSystems: callbacks.updateGameSystems
     },

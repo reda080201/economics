@@ -242,7 +242,7 @@ import { createRuntimeRegistry } from "./runtimeRegistry.js";
 
 "use strict";
 
-export function createApp({ document: documentRef = globalThis.document, window: windowRef = globalThis.window } = {}) {
+export function createApp({ document: documentRef = globalThis.document, window: windowRef = globalThis.window, testMode = false } = {}) {
     const document = documentRef;
     const window = windowRef;
     const performance = window?.performance ?? globalThis.performance ?? { now: () => Date.now() };
@@ -717,6 +717,7 @@ export function createApp({ document: documentRef = globalThis.document, window:
         assignInitialEmployment,
         average,
         behavioralLabel,
+        behavioralSmoothing,
         behavioralSmoothing,
         cacheDomElements,
         cacheElements,
@@ -1729,7 +1730,6 @@ export function createApp({ document: documentRef = globalThis.document, window:
               updateEarlyWarningSystem,
               advanceHistoricalScenarioTimeline,
               syncHistoricalScenarioMetrics,
-              updateTaxSentimentMetrics,
               updateVulnerabilitySystem,
               updateGameSystems
             },
@@ -1857,6 +1857,7 @@ export function createApp({ document: documentRef = globalThis.document, window:
         createInitialPolicyCredibility,
         createInitialRateStructure,
         effectiveBaseWage,
+        getGDPGrowthWindow,
         getRecentUnemploymentTrend,
         recordFlow
       };
@@ -2086,6 +2087,7 @@ export function createApp({ document: documentRef = globalThis.document, window:
       return {
         state,
         CALIBRATION,
+        NEUTRAL_INTEREST_RATE,
         TARGET_INFLATION,
         TARGET_UNEMPLOYMENT,
         TICKS_PER_MONTH,
@@ -2093,14 +2095,17 @@ export function createApp({ document: documentRef = globalThis.document, window:
         applyInertia,
         average,
         behavioralLabel,
+        behavioralSmoothing,
         classStatusLabel,
         clamp,
         computeNonlinearStress,
+        createInitialAssetMarket,
         createInitialBehavioralState,
         createInitialClassAnalysis,
         createInitialInformationSystem,
         createInitialMacroFinancialTransmission,
         createInitialPerceivedEconomy,
+        createInitialRealEstateMarket,
         createInitialSentimentState,
         createInitialVulnerabilityState,
         creditRatingScore,
@@ -2108,12 +2113,15 @@ export function createApp({ document: documentRef = globalThis.document, window:
         expectationMoodLabel,
         giniCoefficient,
         getGDPGrowthWindow,
+        getAverageHistoryChange,
         getRecentPolicyShock,
         getRecentUnemploymentTrend,
+        getTrendDelta,
         householdClassOrder,
         informationSmooth,
   perceptionGapLabel,
         riskLabel,
+        pushEvent,
         safeNumber,
         safeValue,
         sectorLabel,
@@ -3946,6 +3954,9 @@ export function createApp({ document: documentRef = globalThis.document, window:
     }
 
     function applyEquilibriumGravity() {
+      if (state.config?.educationalStabilizersEnabled === false) {
+        return { demandAdjustment: 1, priceAdjustment: 0 };
+      }
       const inflationGap = Math.max(0, safeNumber(state.metrics.inflation, 0) - 4.0);
       const unemploymentGap = Math.max(0, safeNumber(state.metrics.unemploymentRate, 0) - 12.0);
       const gdpFloor = Math.max(1, state.consumers.length * effectiveBaseWage() * 0.16);
@@ -3956,6 +3967,15 @@ export function createApp({ document: documentRef = globalThis.document, window:
       };
     }
 
-    const api = { init };
+    const api = testMode
+      ? {
+        init,
+        testing: {
+          getState: () => state,
+          reset: resetSimulation,
+          step: safeStepSimulation
+        }
+      }
+      : { init };
     return api;
 }

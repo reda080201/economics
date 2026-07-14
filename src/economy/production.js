@@ -87,15 +87,18 @@ export function computePriceChange(context, producer, observedDemand) {
   const costPush = clamp(costNorm * 0.008 + externalCostNorm * 0.006, -0.006, 0.014);
   const shortage = clamp(inventoryNorm * 0.012, -0.010, 0.014);
   const expectations = clamp(expectationNorm * 0.005, -0.004, 0.007);
-  const equilibriumPull = clamp((TARGET_INFLATION - state.smoothedInflation) * 0.00220, -0.003, 0.007);
+  const stabilizersEnabled = state.config?.educationalStabilizersEnabled !== false;
+  const equilibriumPull = stabilizersEnabled
+    ? clamp((TARGET_INFLATION - state.smoothedInflation) * 0.00220, -0.003, 0.007)
+    : 0;
   const meanReversion = clamp(-priceDeviation * 0.006, -0.006, 0.006);
   const responseInflationPressure = computeInflationResponseSignal(producer, observedDemand);
 
   let rawChange = state.shock.pricePressure + demandPull + costPush + shortage + expectations + equilibriumPull + meanReversion + responseInflationPressure;
   const recessionary = state.metrics.unemploymentRate > 12 || getGDPGrowthWindow() < -4;
   const tightLabor = state.metrics.unemploymentRate < 6 && !recessionary;
-  if (state.smoothedInflation < 1.0) rawChange += recessionary ? 0.00250 : 0.00950;
-  if (tightLabor && inventoryRatio < 2.4) rawChange += 0.0032;
+  if (stabilizersEnabled && state.smoothedInflation < 1.0) rawChange += recessionary ? 0.00250 : 0.00950;
+  if (stabilizersEnabled && tightLabor && inventoryRatio < 2.4) rawChange += 0.0032;
   if (producer.lastProfit < -60) rawChange += 0.0015;
   if (producer.financiallyStressed && producer.inventory > producer.expectedDemand) rawChange -= 0.0014;
 
@@ -119,6 +122,7 @@ export function adjustProducerPricesAndExpectations(context) {
   } = context;
   const drivers = { demandPull: 0, costPush: 0, shortage: 0, expectations: 0 };
   const equilibriumGravity = applyEquilibriumGravity();
+  const stabilizersEnabled = state.config?.educationalStabilizersEnabled !== false;
   state.producers.forEach((producer) => {
     const observedDemand = producer.unitsSoldTick;
     producer.smoothedObservedDemand = applyInertia(safeNumber(producer.smoothedObservedDemand, observedDemand), observedDemand);
@@ -143,7 +147,9 @@ export function adjustProducerPricesAndExpectations(context) {
     const expectationAmplification = clamp((producer.expectedInflation - TARGET_INFLATION) / 100 * 0.18, -0.004, 0.010);
     const recessionary = state.metrics.unemploymentRate > 12 || getGDPGrowthWindow() < -4;
     const tightLabor = state.metrics.unemploymentRate < 6 && !recessionary;
-    const priceAnchorBoost = state.smoothedInflation < 1.0
+    const priceAnchorBoost = !stabilizersEnabled
+      ? 0
+      : state.smoothedInflation < 1.0
       ? (recessionary ? 0.0040 : 0.0170)
       : state.smoothedInflation < TARGET_INFLATION
         ? (recessionary ? 0.0015 : 0.0070)
